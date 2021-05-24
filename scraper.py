@@ -104,6 +104,7 @@ def obeteniendo_html(departamento, palabra_clave, precio_min=None, precio_max=No
 
     if departamento is not None:
         url = "https://www.revolico.com/" + str(departamento) + "/search.html?q=" + str(palabra_clave) + "&order=date"
+        print("esta es la url",url)
     else:
         url = "https://www.revolico.com/search.html?q=" + str(palabra_clave) + "&order=date"
 
@@ -159,6 +160,7 @@ def obeteniendo_html(departamento, palabra_clave, precio_min=None, precio_max=No
 def get_main_anuncios(departamento, palabra_clave, precio_min=None, precio_max=None, provincia=None, municipio=None,
                       fotos=None):
     contenido_web = obeteniendo_html(departamento, palabra_clave, precio_min, precio_max, provincia, municipio, fotos)
+    print(contenido_web)
     anuncios = contenido_web.find('ul')
     if anuncios != None:
         articulos = anuncios.find_all('li')
