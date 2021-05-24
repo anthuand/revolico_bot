@@ -84,14 +84,17 @@ def buscar(upd, context):
                     if foto != 0 and foto != 'no tiene':
                         src_img = obtener_imagenes(url)
                         if src_img:
-                            ft = open("foto.jpg", "rb")
-                            # inf = str(info) + str(src_img)
+                            print("Voy a enviar una anuncio con imagen")
+                            # ft = open("foto.jpg", "rb")
+                            inf = str(info) + str(src_img)
                             chat = upd.message.chat
                             chat.send_action(action=ChatAction.UPLOAD_PHOTO)
-                            # upd.message.reply_text(text=inf, reply_markup=markup)
-                            upd.message.reply_photo(photo=ft, caption=info, reply_markup=markup)
+                            upd.message.reply_text(text=inf, reply_markup=markup)
+                            # upd.message.reply_photo(photo=ft, caption=info, reply_markup=markup)
                             print(info)
                     else:
+                        # chat.send_action(action=ChatAction.TYPING)
+                        print("Voy a enviar una anuncio sin imagen")
                         context.bot.send_message(CHATID, info, reply_markup=markup)
                         print(info)
 
