@@ -85,12 +85,12 @@ def buscar(upd, context):
                         src_img = obtener_imagenes(url)
                         if src_img:
                             print("Voy a enviar una anuncio con imagen")
-                            # ft = open("foto.jpg", "rb")
-                            inf = str(info) + str(src_img)
+                            ft = open("foto.jpg", "rb")
+                            # inf = str(info) + str(src_img)
                             chat = upd.message.chat
                             chat.send_action(action=ChatAction.UPLOAD_PHOTO)
-                            upd.message.reply_text(text=inf, reply_markup=markup)
-                            # upd.message.reply_photo(photo=ft, caption=info, reply_markup=markup)
+                            # upd.message.reply_text(text=inf, reply_markup=markup)
+                            upd.message.reply_photo(photo=ft, caption=info, reply_markup=markup)
                             print(info)
                     else:
                         # chat.send_action(action=ChatAction.TYPING)
@@ -151,15 +151,16 @@ def palabra_clave(update, context):
     print("estoy dentro de palabra clave")
     query = update.callback_query
     query.answer()
-    query.edit_message_text(text="Escribe la palabra clave a buscar")
-    # " Ejemplos de búsquedas por palabra clave:\n"
-    # "En los resultados aparecerán anuncios que contengan:\n\n"
-    # "<b>casa grande: </b>     todas las palabras de la búsqueda.\n"
-    # "<b>\"casa grande\":</b>   la frase exacta.\n"
-    # "<b>casa | grande:</b>   una palabra o la otra\n"
-    # "<b>casa !grande:</b>    una palabra pero no la otra.\n"
-    # "<b>casa (grande | pequeña):</b>   la primera palabra y cualquiera de las otras dos\n",
-    # parse_mode = "HTML"
+    query.edit_message_text(text=" 
+    "Ejemplos de búsquedas por palabra clave:\n"
+    "En los resultados aparecerán anuncios que contengan:\n\n"
+    "<b>casa grande: </b>     todas las palabras de la búsqueda.\n"
+    "<b>\"casa grande\":</b>   la frase exacta.\n"
+    "<b>casa | grande:</b>   una palabra o la otra\n"
+    "<b>casa !grande:</b>    una palabra pero no la otra.\n"
+    "<b>casa (grande | pequeña):</b>   la primera palabra y cualquiera de las otras dos\n",
+    parse_mode = "HTML")
+    
     global bt
     bt = boton()
     bt.id = "palabra_clave"
