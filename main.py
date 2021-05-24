@@ -55,19 +55,18 @@ def buscar(upd, context):
 
                 get_main_anuncios(dep, palabra_clave, precio_min, precio_max, provincia, municipio, fotos)
                 anuncios = obtener_anuncios()
-                if anuncios != None:
-                    for anuncio in anuncios:
-                        id = anuncio[0]
-                        url = "https://www.revolico.com" + str(anuncio[1])
-                        titulo = anuncio[2]
-                        precio = anuncio[3]
-                        descripcion = anuncio[4]
-                        fecha = anuncio[5]
-                        ubicacion = anuncio[6]
-                        foto = anuncio[7]
-                        Contacto, telefono, email = obtener_contacto(url)
+                for anuncio in anuncios:
+                    id = anuncio[0]
+                    url = "https://www.revolico.com" + str(anuncio[1])
+                    titulo = anuncio[2]
+                    precio = anuncio[3]
+                    descripcion = anuncio[4]
+                    fecha = anuncio[5]
+                    ubicacion = anuncio[6]
+                    foto = anuncio[7]
+                    Contacto, telefono, email = obtener_contacto(url)
 
-                        info = (
+                    info = (
                             "#" + str(palabra_clave) + "\n" + str(titulo) + "\n\n"
                             + "Precio: " + str(precio) + "\n\n\n"
                             + "descripcion: \n" + str(descripcion) + "\n\n\n"
@@ -76,25 +75,25 @@ def buscar(upd, context):
                             + "Contacto: " + str(Contacto) + "\n"
                             + "Email: " + str(email) + "\n"
                             + "Telefono: " + str(telefono) + "\n\n"
-                        )
+                    )
 
-                        boton = InlineKeyboardButton("Ver anuncio", url)
-                        markup = InlineKeyboardMarkup([
+                    boton = InlineKeyboardButton("Ver anuncio", url)
+                    markup = InlineKeyboardMarkup([
                         [boton]
-                        ])
-                        if foto != 0 and foto != 'no tiene':
-                            src_img = obtener_imagenes(url)
-                            if src_img:
-                                ft = open("foto.jpg", "rb")
-                                # inf = str(info) + str(src_img)
-                                chat = upd.message.chat
-                                chat.send_action(action=ChatAction.UPLOAD_PHOTO)
-                                # upd.message.reply_text(text=inf, reply_markup=markup)
-                                upd.message.reply_photo(photo=ft, caption=info, reply_markup=markup)
-                                print(info)
-                            else:
-                                context.bot.send_message(CHATID, info, reply_markup=markup)
+                    ])
+                    if foto != 0 and foto != 'no tiene':
+                        src_img = obtener_imagenes(url)
+                        if src_img:
+                            ft = open("foto.jpg", "rb")
+                            # inf = str(info) + str(src_img)
+                            chat = upd.message.chat
+                            chat.send_action(action=ChatAction.UPLOAD_PHOTO)
+                            # upd.message.reply_text(text=inf, reply_markup=markup)
+                            upd.message.reply_photo(photo=ft, caption=info, reply_markup=markup)
                             print(info)
+                    else:
+                        context.bot.send_message(CHATID, info, reply_markup=markup)
+                        print(info)
 
                 time.sleep(0.1)
 
@@ -149,16 +148,15 @@ def palabra_clave(update, context):
     print("estoy dentro de palabra clave")
     query = update.callback_query
     query.answer()
-    query.edit_message_text(text=
-                            " Ejemplos de búsquedas por palabra clave:\n"
-                            "En los resultados aparecerán anuncios que contengan:\n\n"
-                            "<b>casa grande: </b>     todas las palabras de la búsqueda.\n"
-                            "<b>\"casa grande\":</b>   la frase exacta.\n"
-                            "<b>casa | grande:</b>   una palabra o la otra\n"
-                            "<b>casa !grande:</b>    una palabra pero no la otra.\n"
-                            "<b>casa (grande | pequeña):</b>   la primera palabra y cualquiera de las otras dos\n",
-                            parse_mode="HTML"
-                            )
+    query.edit_message_text(text="Escribe la palabra clave a buscar")
+    # " Ejemplos de búsquedas por palabra clave:\n"
+    # "En los resultados aparecerán anuncios que contengan:\n\n"
+    # "<b>casa grande: </b>     todas las palabras de la búsqueda.\n"
+    # "<b>\"casa grande\":</b>   la frase exacta.\n"
+    # "<b>casa | grande:</b>   una palabra o la otra\n"
+    # "<b>casa !grande:</b>    una palabra pero no la otra.\n"
+    # "<b>casa (grande | pequeña):</b>   la primera palabra y cualquiera de las otras dos\n",
+    # parse_mode = "HTML"
     global bt
     bt = boton()
     bt.id = "palabra_clave"
