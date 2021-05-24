@@ -151,8 +151,7 @@ def palabra_clave(update, context):
     print("estoy dentro de palabra clave")
     query = update.callback_query
     query.answer()
-    query.edit_message_text(text=" 
-    "Ejemplos de búsquedas por palabra clave:\n"
+    query.edit_message_text(text= "Ejemplos de búsquedas por palabra clave:\n"
     "En los resultados aparecerán anuncios que contengan:\n\n"
     "<b>casa grande: </b>     todas las palabras de la búsqueda.\n"
     "<b>\"casa grande\":</b>   la frase exacta.\n"
