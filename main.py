@@ -86,7 +86,7 @@ def buscar(upd, context):
                         if src_img:
                             print("Voy a enviar una anuncio con imagen")
                             # ft = open("foto.jpg", "rb")
-                            inf =str(info)+'<a href="'+ src_img +'">Imagen</a>' 
+                            inf =str(info)+'<a href="'+ src_img +'">&#8205;</a>' 
                             chat = upd.message.chat
                             chat.send_action(action=ChatAction.UPLOAD_PHOTO)
                             upd.message.reply_text(text=inf, parse_mode="HTML", reply_markup=markup)
