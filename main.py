@@ -85,12 +85,12 @@ def buscar(upd, context):
                         src_img = obtener_imagenes(url)
                         if src_img:
                             print("Voy a enviar una anuncio con imagen")
-                            ft = open("foto.jpg", "rb")
-                            # inf = str(info) + str(src_img)
+                            # ft = open("foto.jpg", "rb")
+                            inf = '<a href="' + src_img + '">&#8205;</a>' +str(info)
                             chat = upd.message.chat
                             chat.send_action(action=ChatAction.UPLOAD_PHOTO)
-                            # upd.message.reply_text(text=inf, reply_markup=markup)
-                            upd.message.reply_photo(photo=ft, caption=info, reply_markup=markup)
+                            upd.message.reply_text(text=inf, parse_mode="HTML", reply_markup=markup)
+                            # upd.message.reply_photo(photo=ft, caption=info, reply_markup=markup)
                             print(info)
                     else:
                         # chat.send_action(action=ChatAction.TYPING)

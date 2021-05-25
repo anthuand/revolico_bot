@@ -74,9 +74,9 @@ def obtener_imagenes(url):
             for imagen in imagenes:
                 if imagen.find('a').get('href') is not None:
                     url = imagen.find('a').get('href')
-            my_img = requests.get(url)
+            # my_img = requests.get(url)
             print("obteniendo imagen desde : ",url)
-            open('foto.jpg', 'wb').write(my_img.content)
+            # open('foto.jpg', 'wb').write(my_img.content)
 
             return url
 
@@ -209,7 +209,7 @@ def get_main_anuncios(departamento, palabra_clave, precio_min=None, precio_max=N
                 else:
                     foto = 'no tiene'
 
-                if str(fecha).find('segundos') != -1:
+                if str(fecha).find('horas') != -1:
                     if str(url) != 'no tiene':
                         insertar_anuncio(url=url, titulo=titulo, precio=precio,
                                          descripcion=descripcion, fecha=fecha,
