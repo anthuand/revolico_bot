@@ -349,7 +349,7 @@ def parar(upd):
 def start(update, context):
     """Iniciar el bot"""
 
-    if autentificar():
+    if autentificar(update, context):
         # sendDocument
         update.message.reply_text('Hi!')
     else:
