@@ -29,17 +29,33 @@ stop_threads = [False]
 Filtros = []
 borrar_filtro = 1
 introducir_datos_filtro, end = range(2)
+anadir_usuarios = 1
+Users_id = ['1122914981']
 
 
 # ---Autentificar usuarios
 
 
 def autentificar(update, context):
-    mi_id = 112291498 #1
-    if str(update.message.chat_id) == str(mi_id):
-        return True
+    for user in Users_id:
+        if str(update.message.chat_id) == user:
+            return True
+        else:
+            return False
+
+
+def add_user(update, context):
+    if str(update.message.chat_id) == '1122914981':
+        update.message.reply_text('Hola admin añade un nuevo usuario!, escribe el id del usuario')
+        return anadir_usuarios
     else:
-        return False
+        update.message.reply_text('No tienes permiso para agregar a nadie!')
+
+
+def usuario_recibido(update, context):
+    user = update.message.text
+    Users_id.append(str(user))
+    update.message.reply_text('Usuario añadido correctamente')
 
 
 # sendDocument
@@ -351,7 +367,8 @@ def start(update, context):
 
     if autentificar(update, context):
         # sendDocument
-        update.message.reply_text('Hi!')
+        update.message.reply_text('Hola bienvenido al bot revolico, aqui podras conocer en segundos cuando se publique un producto seleccionado'
+                                  'por usted!')
     else:
         update.message.reply_text(
             'Lo siento usted no tiene permiso para acceder a este bot , por favor pongase en contacto con el administrador')
@@ -359,16 +376,27 @@ def start(update, context):
 
 def start_search(update: Updater, context):
     """Iniciar  el bot"""
-    if Hilo_status[0] == 'funcionando':
-        parar(upd=update)
-    Hilo_status.clear()
-    Hilo_status.append('funcionando')
-    iniciar_lista_de_trabajo(update, context)
+    if autentificar(update, context):
+        if Hilo_status[0] == 'funcionando':
+            parar(upd=update)
+        Hilo_status.clear()
+        Hilo_status.append('funcionando')
+        iniciar_lista_de_trabajo(update, context)
+    else:
+        update.message.reply_text(
+            'Lo siento usted no tiene permiso para acceder a este bot , por favor pongase en contacto con el administrador')
+
+
 
 
 def stoped(update: Updater, context):
     """Detener el bot"""
-    parar(upd=update)
+    if autentificar(update, context):
+        parar(upd=update)
+    else:
+        update.message.reply_text(
+            'Lo siento usted no tiene permiso para acceder a este bot , por favor pongase en contacto con el administrador')
+
 
 
 def status(update: Updater, context):
@@ -377,22 +405,35 @@ def status(update: Updater, context):
 
 def add(update: Update, context: CallbackContext) -> None:
     """Anadir una nueva regla o filtro  ."""
-    update.message.reply_text('Selecciona el departamento donde buscar:', reply_markup=markup_departamentos)
-    return introducir_datos_filtro
+    if autentificar(update, context):
+        update.message.reply_text('Selecciona el departamento donde buscar:', reply_markup=markup_departamentos)
+        return introducir_datos_filtro
+    else:
+        update.message.reply_text(
+            'Lo siento usted no tiene permiso para acceder a este bot , por favor pongase en contacto con el administrador')
+
+
+
 
 
 def delete(update, context):
     """Eliminar una regla o filtro"""
-    filtros = obtener_filtros()
-    for filtro in filtros:
-        id = filtro[0]
-        palabra_clave = filtro[2]
+    if autentificar(update, context):
+        filtros = obtener_filtros()
+        for filtro in filtros:
+            id = filtro[0]
+            palabra_clave = filtro[2]
 
-        botones_filtro_borrar.append([InlineKeyboardButton(str(palabra_clave), callback_data=id)])
-    botones_filtro_borrar.append([InlineKeyboardButton(text="Borrar todos", callback_data='borrar todos')])
-    botones_filtro_borrar.append([InlineKeyboardButton("Cancelar", callback_data='Cancelar')])
-    markup = InlineKeyboardMarkup(botones_filtro_borrar)
-    update.message.reply_text('Seleccione el filtro a borrar', reply_markup=markup)
+            botones_filtro_borrar.append([InlineKeyboardButton(str(palabra_clave), callback_data=id)])
+        botones_filtro_borrar.append([InlineKeyboardButton(text="Borrar todos", callback_data='borrar todos')])
+        botones_filtro_borrar.append([InlineKeyboardButton("Cancelar", callback_data='Cancelar')])
+        markup = InlineKeyboardMarkup(botones_filtro_borrar)
+        update.message.reply_text('Seleccione el filtro a borrar', reply_markup=markup)
+
+    else:
+        update.message.reply_text(
+            'Lo siento usted no tiene permiso para acceder a este bot , por favor pongase en contacto con el administrador')
+
 
 
 def test(update, context):
@@ -402,34 +443,43 @@ def test(update, context):
 
 def show(update, context):
     """Mostrar todas las reglas o filtros activos."""
+    if autentificar(update, context):
+        filtros = obtener_filtros()
+        for filtro in filtros:
+            id = filtro[0]
+            dep = filtro[1]
+            palabra_clave = filtro[2]
+            precio_min = filtro[3]
+            precio_max = filtro[4]
+            provincia = filtro[5]
+            municipio = filtro[6]
+            fotos = filtro[7]
+            mensaje = (
+                    "id: " + str(id) + "\n" +
+                    "departamento: " + str(dep) + "\n" +
+                    "palabra_clave: " + (palabra_clave) + "\n" +
+                    "precio_min: " + str(precio_min) + "\n" +
+                    "precio_max: " + str(precio_max) + "\n" +
+                    "provincia: " + str(provincia) + "\n" +
+                    "municipio: " + str(municipio) + "\n" +
+                    "fotos: " + str(fotos) + "\n"
 
-    filtros = obtener_filtros()
-    for filtro in filtros:
-        id = filtro[0]
-        dep = filtro[1]
-        palabra_clave = filtro[2]
-        precio_min = filtro[3]
-        precio_max = filtro[4]
-        provincia = filtro[5]
-        municipio = filtro[6]
-        fotos = filtro[7]
-        mensaje = (
-                "id: " + str(id) + "\n" +
-                "departamento: " + str(dep) + "\n" +
-                "palabra_clave: " + (palabra_clave) + "\n" +
-                "precio_min: " + str(precio_min) + "\n" +
-                "precio_max: " + str(precio_max) + "\n" +
-                "provincia: " + str(provincia) + "\n" +
-                "municipio: " + str(municipio) + "\n" +
-                "fotos: " + str(fotos) + "\n"
+            )
+            update.message.reply_text(mensaje)
+    else:
+        update.message.reply_text(
+            'Lo siento usted no tiene permiso para acceder a este bot , por favor pongase en contacto con el administrador')
 
-        )
-        update.message.reply_text(mensaje)
 
 
 def help(update, context):
     """Mostrar la ayuda del bot"""
-    update.message.reply_text('Help!')
+    if autentificar(update, context):
+        update.message.reply_text('Help!')
+    else:
+        update.message.reply_text(
+            'Lo siento usted no tiene permiso para acceder a este bot , por favor pongase en contacto con el administrador')
+
 
 
 def ads_admin(update, context):
@@ -517,6 +567,18 @@ def main():
         },
         fallbacks=[],
     ))
+    dp.add_handler(ConversationHandler(
+        entry_points=[
+            CommandHandler("add_user", add_user)
+        ],
+        states={
+            anadir_usuarios: [
+                MessageHandler(Filters.text, usuario_recibido),
+            ],
+
+        },
+        fallbacks=[],
+    ))
     dp.add_handler(CallbackQueryHandler(cancel, pattern='Cancelar'))
     dp.add_handler(CallbackQueryHandler(delete_all, pattern='borrar todos'))
     dp.add_handler(CallbackQueryHandler(delete_filter))
@@ -526,16 +588,16 @@ def main():
                                   not_comand))
 
     # log all errors
-    dp.add_error_handler(error)
+    # dp.add_error_handler(error)
+    #
+    # updater.start_polling()
 
-    updater.start_polling()
+    PORT = int(os.environ.get("PORT", "8443"))
+    HEROKU_APP_NAME = os.environ.get("HEROKU_APP_NAME")
+    updater.start_webhook(listen="0.0.0.0", port=PORT, url_path=TOKEN)
+    updater.bot.set_webhook("https://{}.herokuapp.com/{}".format(HEROKU_APP_NAME, TOKEN))
 
-    # PORT = int(os.environ.get("PORT", "8443"))
-    # HEROKU_APP_NAME = os.environ.get("HEROKU_APP_NAME")
-    # updater.start_webhook(listen="0.0.0.0", port=PORT, url_path=TOKEN)
-    # updater.bot.set_webhook("https://{}.herokuapp.com/{}".format(HEROKU_APP_NAME, TOKEN))
-
-    updater.idle()
+    # updater.idle()
 
 
 if __name__ == '__main__':
