@@ -70,9 +70,9 @@ def usuario_recibido(update, context):
 #         update.message.reply_text('Seleccione el usuario a borrar', reply_markup=markup)
         
 
-    else:
-        update.message.reply_text(
-            'Lo siento usted no tiene permiso para acceder a este bot , por favor pongase en contacto con el administrador')
+    # else:
+    #     update.message.reply_text(
+    #         'Lo siento usted no tiene permiso para acceder a este bot , por favor pongase en contacto con el administrador')
 
 def show_user(update,context):
     update.message.reply_text(Users_id)
