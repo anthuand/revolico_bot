@@ -64,7 +64,7 @@ def delete_user(update, context):
     """Eliminar una usuario"""
     if autentificar(update, context):
         for user in Users_id:
-           botones_boorar_usuario.append([InlineKeyboardButton(str(user), callback_data=Users_id.pop(user))])
+           botones_boorar_usuario.append([InlineKeyboardButton(str(user), callback_data=Users_id.pop(user.index))])
         botones_boorar_usuario.append([InlineKeyboardButton("Cancelar", callback_data='Cancelar_user')])
         markup = InlineKeyboardMarkup(botones_boorar_usuario)
         update.message.reply_text('Seleccione el usuario a borrar', reply_markup=markup)
