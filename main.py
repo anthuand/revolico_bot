@@ -68,10 +68,15 @@ def delete_user(update, context):
         botones_boorar_usuario.append([InlineKeyboardButton("Cancelar", callback_data='Cancelar_user')])
         markup = InlineKeyboardMarkup(botones_boorar_usuario)
         update.message.reply_text('Seleccione el usuario a borrar', reply_markup=markup)
+        
 
     else:
         update.message.reply_text(
             'Lo siento usted no tiene permiso para acceder a este bot , por favor pongase en contacto con el administrador')
+
+def show_user(update,context):
+    update.message.reply_text(Users_id)
+    
 
 def cancel_user(update, context):
     query = update.callback_query
@@ -565,6 +570,7 @@ def main():
     dp.add_handler(CommandHandler("ads_admin", ads_admin))
     dp.add_handler(CommandHandler("status", status))
     dp.add_handler(CommandHandler("delete_user", delete_user))
+    dp.add_handler(CommandHandler("show_user", show_user))
 
     dp.add_handler(ConversationHandler(
         entry_points=[
