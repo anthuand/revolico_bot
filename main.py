@@ -350,7 +350,8 @@ def done(update, context):
         "Se ha completado la accion de manera exitosa"
     )
     Filtros.clear()
-    log_data = p_clave_valor
+    userName = update.effective_user['first_name']
+    log_data = "[" + str(userName) + "]: " + str(p_clave_valor) + "\n"
     with open("log.txt", "a") as log_file:
         log_file.write(str(log_data))
         log_file.close()
