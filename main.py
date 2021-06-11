@@ -60,14 +60,14 @@ def usuario_recibido(update, context):
     return ConversationHandler.END
 
 
-def delete_user(update, context):
-    """Eliminar una usuario"""
-    if autentificar(update, context):
-        for user in Users_id:
-           botones_boorar_usuario.append([InlineKeyboardButton(str(user), callback_data=Users_id.pop(user.index))])
-        botones_boorar_usuario.append([InlineKeyboardButton("Cancelar", callback_data='Cancelar_user')])
-        markup = InlineKeyboardMarkup(botones_boorar_usuario)
-        update.message.reply_text('Seleccione el usuario a borrar', reply_markup=markup)
+# def delete_user(update, context):
+#     """Eliminar una usuario"""
+#     if autentificar(update, context):
+#         for user in Users_id:
+#            botones_boorar_usuario.append([InlineKeyboardButton(str(user), callback_data=)])
+#         botones_boorar_usuario.append([InlineKeyboardButton("Cancelar", callback_data='Cancelar_user')])
+#         markup = InlineKeyboardMarkup(botones_boorar_usuario)
+#         update.message.reply_text('Seleccione el usuario a borrar', reply_markup=markup)
         
 
     else:
@@ -78,12 +78,12 @@ def show_user(update,context):
     update.message.reply_text(Users_id)
     
 
-def cancel_user(update, context):
-    query = update.callback_query
-    query.answer()
-    query.edit_message_text(
-        "Se ha cancelado la accion"
-    )
+# def cancel_user(update, context):
+#     query = update.callback_query
+#     query.answer()
+#     query.edit_message_text(
+#         "Se ha cancelado la accion"
+#     )
  
 
 
@@ -350,6 +350,10 @@ def done(update, context):
         "Se ha completado la accion de manera exitosa"
     )
     Filtros.clear()
+    log_data = p_clave_valor
+    with open("log.txt", "a") as log_file:
+        log_file.write(str(log_data))
+        log_file.close()
 
     return ConversationHandler.END
 
@@ -569,7 +573,7 @@ def main():
     dp.add_handler(CommandHandler("help", help))
     dp.add_handler(CommandHandler("ads_admin", ads_admin))
     dp.add_handler(CommandHandler("status", status))
-    dp.add_handler(CommandHandler("delete_user", delete_user))
+    # dp.add_handler(CommandHandler("delete_user", delete_user))
     dp.add_handler(CommandHandler("show_user", show_user))
 
     dp.add_handler(ConversationHandler(
@@ -611,7 +615,7 @@ def main():
         fallbacks=[],
     ))
     dp.add_handler(CallbackQueryHandler(cancel, pattern='Cancelar'))
-    dp.add_handler(CallbackQueryHandler(cancel_user, pattern='Cancelar_user'))
+    # dp.add_handler(CallbackQueryHandler(cancel_user, pattern='Cancelar_user'))
     dp.add_handler(CallbackQueryHandler(delete_all, pattern='borrar todos'))
     dp.add_handler(CallbackQueryHandler(delete_filter))
     dp.add_handler(MessageHandler(Filters.text, Listener))
