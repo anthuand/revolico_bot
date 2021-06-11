@@ -55,7 +55,8 @@ def add_user(update, context):
 def usuario_recibido(update, context):
     user = update.message.text
     Users_id.append(str(user))
-    update.message.reply_text('Usuario añadido correctamente')
+    update.message.reply_text('Usuario añadido correctamente, aqui estan todos')
+    update.message.reply_text(Users_id)
 
 
 # sendDocument
