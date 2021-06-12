@@ -38,7 +38,7 @@ botones_boorar_usuario =[]
 
 def autentificar(update, context):
     for user in Users_id:
-        if str(update.message.from.id) == str(user):
+        if str(update.effective_user.id) == str(user):
             return True
         else:
             return False
