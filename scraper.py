@@ -115,10 +115,10 @@ def obeteniendo_html(departamento, palabra_clave, precio_min=None, precio_max=No
     driver = Navegador()
 
     if departamento is not None:
-        url = "https://www.revolico.com/" + str(departamento) + "/search.html?q=" + str(palabra_clave) + "&order=date"
+        url = "https://www.revolico.com/" + str(departamento) + "/search.html?q=" + str(palabra_clave)
         print("Accediendo a : ",url)
     else:
-        url = "https://www.revolico.com/search.html?q=" + str(palabra_clave) + "&order=date"
+        url = "https://www.revolico.com/search.html?q=" + str(palabra_clave)
 
     print("Departamento", departamento)
     print("palabra clave:", palabra_clave)
@@ -209,11 +209,10 @@ def get_main_anuncios(departamento, palabra_clave, precio_min=None, precio_max=N
                 else:
                     foto = 'no tiene'
 
-                if str(fecha).find('segundos') != -1:
-                    if str(url) != 'no tiene':
-                        insertar_anuncio(url=url, titulo=titulo, precio=precio,
-                                         descripcion=descripcion, fecha=fecha,
-                                         ubicacion=ubicacion, foto=foto)
+                if str(fecha).find('segundos') != -1 and str(url) != 'no tiene' and (str(titulo).find(str(palabra_clave)) != -1 or str(descripcion).find(str(palabra_clave)) != -1):
+                    insertar_anuncio(url=url, titulo=titulo, precio=precio,
+                                     descripcion=descripcion, fecha=fecha,
+                                     ubicacion=ubicacion, foto=foto)
 
         except Exception as e:
             print(e)
