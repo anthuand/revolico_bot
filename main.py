@@ -434,6 +434,7 @@ def stoped(update: Updater, context):
 
 
 def status(update: Updater, context):
+    print(update)
     update.message.reply_text(Hilo_status[0])
 
 
@@ -527,6 +528,7 @@ def ads_admin(update, context):
 
 
 def Listener(update, context):
+    print(update)
     bot = context.bot
     update_msg = getattr(update, "message", None)  # get info of message
     msg_id = update_msg.message_id  # get recently message id
