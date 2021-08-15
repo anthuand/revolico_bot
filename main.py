@@ -150,9 +150,11 @@ def buscar(upd, context):
                             upd.message.reply_photo(photo=ft, caption=info, reply_markup=markup)
                             # -1001598585439
                             print(info)
+                            
                             context.bot.send_message(
                                 chat_id="-1001598585439",
-                                text=info
+                                text=info,
+                                reply_markup=markup
                             )
                     else:
                         # chat.send_action(action=ChatAction.TYPING)
@@ -161,7 +163,8 @@ def buscar(upd, context):
                         print(info)
                         context.bot.send_message(
                                 chat_id="-1001598585439",
-                                text=info
+                                text=info,
+                                reply_markup=markup
                             )
 
                 time.sleep(0.1)
@@ -485,6 +488,10 @@ def delete(update, context):
 
 
 def test(update, context):
+    url='https://google.com'
+    boton = InlineKeyboardButton("Ver anuncio", url)
+    markup = InlineKeyboardMarkup([[boton]])
+    context.bot.send_message(chat_id="-1001598585439",text='info' ,reply_markup=markup)
     """Testear el bot y enviar su informe de estado"""
     update.message.reply_text('Tranquilo sigo vivo')
 
