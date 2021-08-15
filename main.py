@@ -445,10 +445,10 @@ def stoped(update: Updater, context):
 def status(update: Updater, context):
     print(update)
     update.message.reply_text(Hilo_status[0])
-    context.bot.send_message(
-                                chat_id="-1001598585439",
-                                text=Hilo_status[0]
-                            )
+    # context.bot.send_message(
+    #                             chat_id="-1001598585439",
+    #                             text=Hilo_status[0]
+    #                         )
 
 
 def add(update: Update, context: CallbackContext) -> None:
