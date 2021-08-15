@@ -148,12 +148,21 @@ def buscar(upd, context):
                             chat.send_action(action=ChatAction.UPLOAD_PHOTO)
                             # upd.message.reply_text(text=inf, parse_mode="HTML", reply_markup=markup)
                             upd.message.reply_photo(photo=ft, caption=info, reply_markup=markup)
+                            # -1001598585439
                             print(info)
+                            context.bot.send_message(
+                                chat_id="-1001598585439",
+                                text=info
+                            )
                     else:
                         # chat.send_action(action=ChatAction.TYPING)
                         print("Voy a enviar una anuncio sin imagen")
                         context.bot.send_message(CHATID, info, reply_markup=markup)
                         print(info)
+                        context.bot.send_message(
+                                chat_id="-1001598585439",
+                                text=info
+                            )
 
                 time.sleep(0.1)
 
@@ -436,6 +445,10 @@ def stoped(update: Updater, context):
 def status(update: Updater, context):
     print(update)
     update.message.reply_text(Hilo_status[0])
+    context.bot.send_message(
+                                chat_id="-1001598585439",
+                                text=Hilo_status[0]
+                            )
 
 
 def add(update: Update, context: CallbackContext) -> None:
