@@ -209,7 +209,7 @@ def get_main_anuncios(departamento, palabra_clave, precio_min=None, precio_max=N
                 else:
                     foto = 'no tiene'
 
-                if str(fecha).find('segundos') != -1 and str(url) != 'no tiene' and (str(titulo).find(str(palabra_clave)) != -1 or str(descripcion).find(str(palabra_clave)) != -1):
+                if str(fecha).find('segundos') != -1 and str(url) != 'no tiene':
                     insertar_anuncio(url=url, titulo=titulo, precio=precio,
                                      descripcion=descripcion, fecha=fecha,
                                      ubicacion=ubicacion, foto=foto)
