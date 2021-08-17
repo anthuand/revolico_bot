@@ -1,7 +1,7 @@
 from selenium import webdriver
 import os
 import time, requests
-
+import unicodedata
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.support.select import Select
@@ -209,8 +209,7 @@ def get_main_anuncios(departamento, palabra_clave, precio_min=None, precio_max=N
                 else:
                     foto = 'no tiene'
 
-                if str(fecha).find('segundos') != -1 and str(url) != 'no tiene':
-                    # and (str(descripcion).find(str(palabra_clave).lower()) != -1 or str(titulo).find(str(palabra_clave).lower()) != -1)
+                if str(fecha).find('segundos') != -1 and str(url) != 'no tiene' and (unicodedata.normalize('NFKD', descripcion).encode('ASCII', 'ignore').lower().find(palabra_clave) != -1 or unicodedata.normalize('NFKD', titulo).encode('ASCII', 'ignore').lower().find(palabra_clave) != -1 ): 
                     insertar_anuncio(url=url, 
                                      titulo=titulo, 
                                      precio=precio,
