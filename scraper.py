@@ -208,8 +208,9 @@ def get_main_anuncios(departamento, palabra_clave, precio_min=None, precio_max=N
                     foto = articulo.find('a', {'class': 'List__StyledTooltip-sc-1oa0tfl-11 ADRO'}).get_text()
                 else:
                     foto = 'no tiene'
-
+                print(titulo+"\n"+descripcion)
                 if str(fecha).find('segundos') != -1 and str(url) != 'no tiene' and (unicodedata.normalize('NFKD', descripcion).encode('ASCII', 'ignore').lower().find(palabra_clave) != -1 or unicodedata.normalize('NFKD', titulo).encode('ASCII', 'ignore').lower().find(palabra_clave) != -1 ): 
+                    print('Estos va a DB: '+titulo+"\n"+descripcion)
                     insertar_anuncio(url=url, 
                                      titulo=titulo, 
                                      precio=precio,
