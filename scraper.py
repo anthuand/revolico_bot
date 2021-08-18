@@ -209,15 +209,21 @@ def get_main_anuncios(departamento, palabra_clave, precio_min=None, precio_max=N
                 else:
                     foto = 'no tiene'
 
-                if str(fecha).find('segundos') != -1 and str(url) != 'no tiene': # and (unicodedata.normalize('NFKD', descripcion).encode('ASCII', 'ignore').lower().find(palabra_clave) != -1 or unicodedata.normalize('NFKD', titulo).encode('ASCII', 'ignore').lower().find(palabra_clave) != -1 )
-                    print('Estos va a DB: '+titulo+"\n")
-                    insertar_anuncio(url=url, 
-                                     titulo=titulo, 
-                                     precio=precio,
-                                     descripcion=descripcion, 
-                                     fecha=fecha,
-                                     ubicacion=ubicacion, 
-                                     foto=foto
+                if str(fecha).find('segundos') != -1 and str(url) != 'no tiene': 
+                    
+                    descrip_normalize=unicodedata.normalize('NFKD', descripcion).encode('ASCII', 'ignore').lower()
+                    titulo_normalize=unicodedata.normalize('NFKD', titulo).encode('ASCII', 'ignore').lower()
+
+                    if str(descrip_normalize).find(palabra_clave)!=-1 or str(titulo_normalize).find(palabra_clave)!=-1:
+                        print('Estos va a DB: '+titulo+"\n")
+                        insertar_anuncio(
+                                        url=url, 
+                                        titulo=titulo, 
+                                        precio=precio,
+                                        descripcion=descripcion, 
+                                        fecha=fecha,
+                                        ubicacion=ubicacion, 
+                                        foto=foto
                                      )
 
         except Exception as e:
