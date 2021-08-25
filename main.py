@@ -8,6 +8,8 @@ from db import insertar_filtro, obtener_filtros, obtener_anuncios, eliminar_filt
 from scraper import get_main_anuncios, obtener_imagenes, obtener_contacto
 import os, time
 import threading
+from datetime import datetime
+import pytz
 
 # PORT = int(os.environ.get('PORT', 8443))
 
@@ -123,11 +125,14 @@ def buscar(upd, context):
                     foto = anuncio[7]
                     Contacto, telefono, email = obtener_contacto(url)
 
+                    dt = datetime.now(pytz.timezone('Cuba'))
+                    hora = dt.strftime('%Y-%m-%d a las %H:%M:%S')
+
                     info = (
                             "#" + str(palabra_clave) + "\n" + str(titulo) + "\n\n"
                             + "Precio: " + str(precio) + "\n\n\n"
                             + "descripcion: \n" + str(descripcion) + "\n\n\n"
-                            + "fecha: " + str(fecha) + "\n"
+                            + "fecha: " + str(hora) + "\n"
                             + "ubicacion: " + str(ubicacion) + "\n"
                             + "Contacto: " + str(Contacto) + "\n"
                             + "Email: " + str(email) + "\n"
