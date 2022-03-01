@@ -208,9 +208,12 @@ def get_main_anuncios(departamento, palabra_clave, precio_min=None, precio_max=N
                     foto = articulo.find('a', {'class': 'List__StyledTooltip-sc-1oa0tfl-11 ADRO'}).get_text()
                 else:
                     foto = 'no tiene'
+                
+                if str(fecha).find('segundos') == -1:
+                    print(titulo)
 
                 if str(fecha).find('segundos') != -1 and str(url) != 'no tiene': 
-                    
+                    print(titulo)
                     descrip_normalize=unicodedata.normalize('NFKD', descripcion).encode('ASCII', 'ignore').lower()
                     titulo_normalize=unicodedata.normalize('NFKD', titulo).encode('ASCII', 'ignore').lower()
 
