@@ -210,14 +210,15 @@ def get_main_anuncios(departamento, palabra_clave, precio_min=None, precio_max=N
                     foto = 'no tiene'
                 
                 if str(fecha).find('segundos') == -1:
-                    print(titulo)
+                    print(fecha)
 
                 if str(fecha).find('segundos') != -1 and str(url) != 'no tiene': 
                     print(titulo)
                     descrip_normalize=unicodedata.normalize('NFKD', descripcion).encode('ASCII', 'ignore').lower()
                     titulo_normalize=unicodedata.normalize('NFKD', titulo).encode('ASCII', 'ignore').lower()
+                    palabra_clave_normalize =unicodedata.normalize('NFKD', palabra_clave).encode('ASCII', 'ignore').lower()
 
-                    if str(descrip_normalize).find(palabra_clave)!=-1 or str(titulo_normalize).find(palabra_clave)!=-1:
+                    if str(descrip_normalize).find(palabra_clave_normalize)!=-1 or str(titulo_normalize).find(palabra_clave_normalize)!=-1:
                         print('Estos va a DB: '+titulo+"\n")
                         insertar_anuncio(
                                         url=url, 
