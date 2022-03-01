@@ -144,8 +144,9 @@ def buscar(upd, context):
                         [boton]
                     ])
 
-                    print(info)
+                    print("Esta es la info: "+str(info))
                     if foto != 0 and foto != 'no tiene':
+                        print("Estoy dentro de un anuncio con foto")
                         src_img = obtener_imagenes(url)
                         if src_img:
                             print("Voy a enviar una anuncio con imagen")
