@@ -125,6 +125,7 @@ def buscar(upd, context):
                     foto = anuncio[7]
                     Contacto, telefono, email = obtener_contacto(url)
 
+                    print(titulo)
                     dt = datetime.now(pytz.timezone('Cuba'))
                     hora = dt.strftime('%Y-%m-%d a las %H:%M:%S')
 
@@ -144,7 +145,7 @@ def buscar(upd, context):
                         [boton]
                     ])
 
-                    print("Esta es la info: "+str(info))
+                    # print("Esta es la info: "+str(info))
                     if foto != 0 and foto != 'no tiene':
                         print("Estoy dentro de un anuncio con foto")
                         src_img = obtener_imagenes(url)

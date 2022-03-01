@@ -215,9 +215,10 @@ def get_main_anuncios(departamento, palabra_clave, precio_min=None, precio_max=N
                     descrip_normalize=unicodedata.normalize('NFKD', descripcion).encode('ASCII', 'ignore').lower()
                     titulo_normalize=unicodedata.normalize('NFKD', titulo).encode('ASCII', 'ignore').lower()
                     palabra_clave_normalize =unicodedata.normalize('NFKD', palabra_clave).encode('ASCII', 'ignore').lower()
+                    print("Este es el normalize de la palabra_clave: "+palabra_clave_normalize)
 
                     if str(descrip_normalize).find(palabra_clave_normalize)!=-1 or str(titulo_normalize).find(palabra_clave_normalize)!=-1:
-                        print('Estos va a DB: '+titulo+"\n")
+                        print('Este anuncio va a DB: '+titulo+"\n")
                         insertar_anuncio(
                                         url=url, 
                                         titulo=titulo, 
