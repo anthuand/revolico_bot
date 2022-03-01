@@ -143,6 +143,8 @@ def buscar(upd, context):
                     markup = InlineKeyboardMarkup([
                         [boton]
                     ])
+
+                    print(info)
                     if foto != 0 and foto != 'no tiene':
                         src_img = obtener_imagenes(url)
                         if src_img:
@@ -154,6 +156,7 @@ def buscar(upd, context):
                             # upd.message.reply_text(text=inf, parse_mode="HTML", reply_markup=markup)
                             upd.message.reply_photo(photo=ft, caption=info, reply_markup=markup)
                             # -1001598585439
+                            print("enviando mensaje al PV")
                             print(info)
                             
                             context.bot.send_message(
@@ -161,6 +164,7 @@ def buscar(upd, context):
                                 text=info,
                                 reply_markup=markup
                             )
+                            print("enviando mensaje al canal")
                     else:
                         # chat.send_action(action=ChatAction.TYPING)
                         print("Voy a enviar una anuncio sin imagen")
