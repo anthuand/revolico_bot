@@ -137,7 +137,7 @@ def buscar(upd, context):
                             + "ubicacion: " + str(ubicacion) + "\n"
                             + "Contacto: " + str(Contacto) + "\n"
                             + "Email: " + str(email) + "\n"
-                            + "Telefono: " + str(telefono) + "\n\n"
+                            + "Telefono: #" + str(telefono) + "\n\n"
                     )
 
                     boton = InlineKeyboardButton("Ver anuncio", url)
