@@ -163,7 +163,6 @@ def buscar(upd, context):
                             
                             context.bot.send_message(
                                 chat_id="-1001598585439",
-                                photo=ft,
                                 text=info,
                                 reply_markup=markup
                             )
