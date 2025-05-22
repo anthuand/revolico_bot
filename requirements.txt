@@ -1,8 +1,6 @@
-python-telegram-bot==13.4.1
-beautifulsoup4==4.9.3
-bs4==0.0.1
-emoji==1.2.0
-requests==2.25.1
-requests-unixsocket==0.2.0
-Scrapy==2.4.1
-selenium==3.141.0
+python-telegram-bot==21.1.1
+beautifulsoup4==4.12.3
+emoji==2.12.1
+requests==2.31.0
+selenium==4.21.0
+webdriver-manager==4.0.1
