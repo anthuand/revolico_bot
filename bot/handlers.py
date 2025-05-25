@@ -11,11 +11,52 @@ from .auth import add_user_handler, user_received_handler, show_user_handler
 import threading
 import time
 from utils.groq_client import general_response_llm
+from threading import Thread, Lock
+from utils.logger import setup_logger
+import datetime
 
-WAITING_FOR_KEYWORD = 1
-search_active = False
-current_keyword = None
-search_thread = None
+search_states = {}
+search_states_lock = Lock()
+logger = setup_logger('revolico_bot')
+
+# Tiempo máximo de inactividad para limpiar estados (en segundos)
+STATE_CLEANUP_INTERVAL = 3600  # 1 hora
+
+class SearchState:
+    def __init__(self, keyword=None):
+        self.active = False
+        self.keyword = keyword
+        self.thread = None
+        self.last_activity = datetime.datetime.utcnow()
+
+    def stop(self):
+        self.active = False
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=2)
+        self.thread = None
+        self.last_activity = datetime.datetime.utcnow()
+
+    def touch(self):
+        self.last_activity = datetime.datetime.utcnow()
+
+
+def get_or_create_state(chat_id):
+    with search_states_lock:
+        if chat_id not in search_states:
+            search_states[chat_id] = SearchState()
+        state = search_states[chat_id]
+        state.touch()
+        return state
+
+def cleanup_old_states():
+    now = datetime.datetime.utcnow()
+    with search_states_lock:
+        to_delete = [cid for cid, state in search_states.items()
+                     if not state.active and (now - state.last_activity).total_seconds() > STATE_CLEANUP_INTERVAL]
+        for cid in to_delete:
+            del search_states[cid]
+        if to_delete:
+            logger.info(f"Cleaned up {len(to_delete)} inactive chat states.")
 
 def start(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(
@@ -43,61 +84,72 @@ def help_command(update: Update, context: CallbackContext) -> None:
     update.message.reply_text('Available commands: /start, /adduser, /showusers, /search, /help')
 
 def search_command(update: Update, context: CallbackContext) -> None:
-    """
-    Inicia una búsqueda continua cada 45 segundos para la palabra clave dada.
-    Si ya hay una búsqueda activa, la reemplaza con la nueva palabra clave.
-    """
-    global search_active, search_thread, current_keyword
+    cleanup_old_states()
+    chat_id = update.effective_chat.id
+    state = get_or_create_state(chat_id)
     if context.args:
         keyword = ' '.join(context.args).strip()
-        current_keyword = keyword
-        if search_active:
-            search_active = False
-            if search_thread and search_thread.is_alive():
-                search_thread.join(timeout=2)
-        search_active = True
+        # Detener búsqueda previa si existe
+        state.stop()
+        state.keyword = keyword
+        state.active = True
         update.message.reply_text(f'🔍 Búsqueda continua iniciada para: "{keyword}". Usa /stopsearch para detenerla.')
         def loop():
-            chat_id = update.effective_chat.id
-            while search_active:
+            while state.active:
                 try:
                     get_main_ads(None, keyword, chat_id=chat_id, context=context, on_new_ad=on_new_ad_telegram)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"Error in search thread for chat {chat_id}: {e}", exc_info=True)
                 for _ in range(45):
-                    if not search_active:
+                    if not state.active:
                         break
                     time.sleep(1)
-        search_thread = threading.Thread(target=loop, daemon=True)
-        search_thread.start()
+        state.thread = Thread(target=loop, daemon=True)
+        state.thread.start()
     else:
         update.message.reply_text('Por favor, usa el comando así: /search <palabra_clave>')
 
 def receive_keyword(update: Update, context: CallbackContext) -> int:
-    global current_keyword
-    current_keyword = update.message.text.strip()
-    update.message.reply_text(f'Keyword saved: "{current_keyword}". Use /startsearch to begin searching.')
+    cleanup_old_states()
+    chat_id = update.effective_chat.id
+    state = get_or_create_state(chat_id)
+    state.keyword = update.message.text.strip()
+    update.message.reply_text(f'Keyword saved: "{state.keyword}". Use /startsearch to begin searching.')
     return ConversationHandler.END
 
 def startsearch_command(update: Update, context: CallbackContext) -> None:
-    global search_active, search_thread, current_keyword
-    if not current_keyword:
+    cleanup_old_states()
+    chat_id = update.effective_chat.id
+    state = get_or_create_state(chat_id)
+    if not state.keyword:
         update.message.reply_text('You must first provide a keyword using /search.')
         return
-    if search_active:
+    if state.active:
         update.message.reply_text('Search is already active.')
         return
-    search_active = True
-    update.message.reply_text(f'🔍 Starting continuous search for: "{current_keyword}". Use /stopsearch to stop.')
-    search_thread = threading.Thread(target=search_loop, args=(update, context), daemon=True)
-    search_thread.start()
+    state.active = True
+    update.message.reply_text(f'🔍 Starting continuous search for: "{state.keyword}". Use /stopsearch to stop.')
+    def loop():
+        while state.active:
+            try:
+                get_main_ads(None, state.keyword, chat_id=chat_id, context=context, on_new_ad=on_new_ad_telegram)
+            except Exception as e:
+                logger.error(f"Error in search thread for chat {chat_id}: {e}", exc_info=True)
+            for _ in range(45):
+                if not state.active:
+                    break
+                time.sleep(1)
+    state.thread = Thread(target=loop, daemon=True)
+    state.thread.start()
 
 def stopsearch_command(update: Update, context: CallbackContext) -> None:
-    global search_active
-    if not search_active:
+    cleanup_old_states()
+    chat_id = update.effective_chat.id
+    state = get_or_create_state(chat_id)
+    if not state.active:
         update.message.reply_text('No active search to stop.')
         return
-    search_active = False
+    state.stop()
     update.message.reply_text('⏹️ Search stopped.')
 
 def on_new_ad_telegram(ad: dict, chat_id: int, context: CallbackContext) -> None:
@@ -118,14 +170,8 @@ def on_new_ad_telegram(ad: dict, chat_id: int, context: CallbackContext) -> None
         context.bot.send_message(chat_id, message, parse_mode="HTML")
 
 def search_loop(update: Update, context: CallbackContext) -> None:
-    global search_active, current_keyword
-    chat_id = update.effective_chat.id
-    while search_active:
-        try:
-            get_main_ads(None, current_keyword, chat_id=chat_id, context=context, on_new_ad=on_new_ad_telegram)
-        except Exception:
-            pass
-        time.sleep(30)
+    # Obsoleto: la lógica ahora está en los métodos por chat
+    pass
 
 search_handler = CommandHandler('search', search_command)
 
