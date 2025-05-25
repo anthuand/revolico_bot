@@ -8,5 +8,3 @@ services:
       - .env
     volumes:
       - ./data:/app/data
-    # Si quieres cambiar el comando de inicio, descomenta y edita:
-    # command: ["python3", "-m", "scraper.revolico", "Aceite"] 

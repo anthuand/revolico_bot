@@ -19,4 +19,4 @@ COPY . .
 RUN pip install playwright && playwright install --with-deps
 
 # Comando por defecto (ajusta según tu entrypoint real)
-CMD ["python3", "-m", "scraper.revolico", "Aceite"] 
+CMD ["python3", "-m", "bot.main"] 
