@@ -128,33 +128,4 @@ def escape_markdown(text: str) -> str:
         return ''
     # Lista de caracteres especiales de Markdown V2
     escape_chars = r'_*[]()~`>#+-=|{}.!'
-    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
-
-def format_ads_markdown(ads: list) -> str:
-    """
-    Formatea una lista de anuncios como mensaje Markdown seguro para Telegram.
-    """
-    if not ads:
-        return 'No se encontraron anuncios nuevos.'
-    lines = []
-    for ad in ads:
-        title = escape_markdown(ad.get('title', ''))
-        url = escape_markdown(ad.get('url', ''))
-        price = escape_markdown(ad.get('price', ''))
-        location = escape_markdown(ad.get('location', ''))
-        date = escape_markdown(ad.get('date', ''))
-        description = escape_markdown(ad.get('description', ''))
-        photo = ad.get('photo', '')
-        line = f"<b><a href='{url}'>{title}</a></b>\n"
-        if price:
-            line += f"<b>Precio:</b> {price}\n"
-        if location:
-            line += f"<b>Ubicación:</b> {location}\n"
-        if date:
-            line += f"<b>Fecha:</b> {date}\n"
-        if description:
-            line += f"<b>Descripción:</b> {description}\n"
-        if photo:
-            line += f"<a href='{photo}'>[Foto]</a>\n"
-        lines.append(line)
-    return '\n---\n'.join(lines) 
+    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text) 

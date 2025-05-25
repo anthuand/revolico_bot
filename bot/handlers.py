@@ -169,12 +169,6 @@ def on_new_ad_telegram(ad: dict, chat_id: int, context: CallbackContext) -> None
     else:
         context.bot.send_message(chat_id, message, parse_mode="HTML")
 
-def search_loop(update: Update, context: CallbackContext) -> None:
-    # Obsoleto: la lógica ahora está en los métodos por chat
-    pass
-
-search_handler = CommandHandler('search', search_command)
-
 def question_command(update: Update, context: CallbackContext) -> None:
     question = ' '.join(context.args)
     if not question:
