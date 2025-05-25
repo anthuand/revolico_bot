@@ -1,8 +1,8 @@
-python-telegram-bot==13.4.1
-beautifulsoup4==4.9.3
-bs4==0.0.1
-emoji==1.2.0
-requests==2.25.1
-requests-unixsocket==0.2.0
-Scrapy==2.4.1
-selenium==3.141.0
+python-telegram-bot==13.15
+selenium==4.10.0
+requests==2.31.0
+beautifulsoup4==4.12.2
+lxml==4.9.3
+emoji==2.10.0
+python-dotenv==1.0.1
+groq

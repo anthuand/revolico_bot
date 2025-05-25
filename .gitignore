@@ -1,3 +1,11 @@
 prueba.py
 soup.html
 venv
+
+__pycache__/
+data/
+*.pyc
+*.pyo
+*.db
+log.txt
+.env
