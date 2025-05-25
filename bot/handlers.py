@@ -19,27 +19,59 @@ search_thread = None
 
 def start(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(
-        "👋 Welcome to *Revolico Bot*!\n\n"
-        "This bot lets you search and receive Revolico ads directly in Telegram.\n\n"
-        "🔹 *What can you do?*\n"
-        "• Search ads by filters (coming soon)\n"
-        "• Manage authorized users (admin only)\n"
-        "• View the list of authorized users\n"
-        "• Get help about commands\n\n"
-        "🔸 *Available commands:*\n"
-        "  /start - Show this welcome message\n"
-        "  /help - Show help and available commands\n"
-        "  /adduser - Add an authorized user (admin only)\n"
-        "  /showusers - View authorized users\n",
-        parse_mode="Markdown"
+        "👋 <b>Welcome to Revolico Bot!</b>\n\n"
+        "Este bot te permite buscar y recibir anuncios de Revolico directamente en Telegram.\n\n"
+        "<b>¿Qué puedes hacer?</b>\n"
+        "• Buscar anuncios por palabra clave\n"
+        "• Recibir anuncios nuevos automáticamente cada 45 segundos\n"
+        "• Gestionar usuarios autorizados (solo admin)\n"
+        "• Ver la lista de usuarios autorizados\n"
+        "• Hacer preguntas a la IA\n\n"
+        "<b>Comandos disponibles:</b>\n"
+        "  /start - Muestra este mensaje de bienvenida\n"
+        "  /search &lt;palabra_clave&gt; - Inicia o reinicia la búsqueda continua de anuncios\n"
+        "  /stopsearch - Detiene la búsqueda continua\n"
+        "  /adduser - Añade un usuario autorizado (solo admin)\n"
+        "  /showusers - Muestra los usuarios autorizados\n"
+        "  /question &lt;pregunta&gt; - Haz una pregunta a la IA\n"
+        "  /help - Muestra los comandos disponibles\n\n"
+        "<i>Ejemplo: /search bicicleta</i>",
+        parse_mode="HTML"
     )
 
 def help_command(update: Update, context: CallbackContext) -> None:
     update.message.reply_text('Available commands: /start, /adduser, /showusers, /search, /help')
 
-def search_command(update: Update, context: CallbackContext) -> int:
-    update.message.reply_text('Please enter the keyword or product you want to search for:')
-    return WAITING_FOR_KEYWORD
+def search_command(update: Update, context: CallbackContext) -> None:
+    """
+    Inicia una búsqueda continua cada 45 segundos para la palabra clave dada.
+    Si ya hay una búsqueda activa, la reemplaza con la nueva palabra clave.
+    """
+    global search_active, search_thread, current_keyword
+    if context.args:
+        keyword = ' '.join(context.args).strip()
+        current_keyword = keyword
+        if search_active:
+            search_active = False
+            if search_thread and search_thread.is_alive():
+                search_thread.join(timeout=2)
+        search_active = True
+        update.message.reply_text(f'🔍 Búsqueda continua iniciada para: "{keyword}". Usa /stopsearch para detenerla.')
+        def loop():
+            chat_id = update.effective_chat.id
+            while search_active:
+                try:
+                    get_main_ads(None, keyword, chat_id=chat_id, context=context, on_new_ad=on_new_ad_telegram)
+                except Exception:
+                    pass
+                for _ in range(45):
+                    if not search_active:
+                        break
+                    time.sleep(1)
+        search_thread = threading.Thread(target=loop, daemon=True)
+        search_thread.start()
+    else:
+        update.message.reply_text('Por favor, usa el comando así: /search <palabra_clave>')
 
 def receive_keyword(update: Update, context: CallbackContext) -> int:
     global current_keyword
@@ -95,13 +127,7 @@ def search_loop(update: Update, context: CallbackContext) -> None:
             pass
         time.sleep(30)
 
-search_handler = ConversationHandler(
-    entry_points=[CommandHandler('search', search_command)],
-    states={
-        WAITING_FOR_KEYWORD: [MessageHandler(Filters.text & ~Filters.command, receive_keyword)]
-    },
-    fallbacks=[]
-)
+search_handler = CommandHandler('search', search_command)
 
 def question_command(update: Update, context: CallbackContext) -> None:
     question = ' '.join(context.args)

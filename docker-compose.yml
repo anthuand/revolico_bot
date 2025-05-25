@@ -1,0 +1,12 @@
+version: '3.8'
+services:
+  revolico-bot:
+    image: revolico-bot
+    container_name: revolico-bot
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    # Si quieres cambiar el comando de inicio, descomenta y edita:
+    # command: ["python3", "-m", "scraper.revolico", "Aceite"] 
