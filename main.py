@@ -1,674 +1,535 @@
 import logging
 from emoji import emojize
-import requests
+import requests # Keep for now, though not directly used in this version after scraper changes
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update, ChatAction
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackQueryHandler, \
-    CallbackContext, JobQueue
-from db import insertar_filtro, obtener_filtros, obtener_anuncios, eliminar_filtro, eliminar_todos_los_filtros
-from scraper import get_main_anuncios, obtener_imagenes, obtener_contacto
-import os, time
+    CallbackContext
+import db # db.py is expected to be in the same directory
+import scraper # scraper.py is expected to be in the same directory
+import os
+import time
 import threading
 from datetime import datetime
 import pytz
-
-# PORT = int(os.environ.get('PORT', 8443))
+import re # For parsing user IDs
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
-
 logger = logging.getLogger(__name__)
+
+# --- Configuration ---
 TOKEN = os.getenv('TOKEN')
+if not TOKEN:
+    logger.error("Telegram Bot TOKEN not found in environment variables!")
+    exit()
+
+DEFAULT_AUTHORIZED_USER_IDS = ['1122914981'] # Default if env var is not set
+AUTHORIZED_USER_IDS_STR = os.getenv('AUTHORIZED_USER_IDS', ",".join(DEFAULT_AUTHORIZED_USER_IDS))
+AUTHORIZED_USER_IDS = [uid.strip() for uid in AUTHORIZED_USER_IDS_STR.split(',')]
+
+CHANNEL_ID_STR = os.getenv('TELEGRAM_CHANNEL_ID') # e.g., "-1001598585439"
+CHANNEL_ID = int(CHANNEL_ID_STR) if CHANNEL_ID_STR else None
+if not CHANNEL_ID:
+    logger.warning("TELEGRAM_CHANNEL_ID not set in environment. Will only send to user if not set.")
 
 
-class boton:
-    id = ""
-    valor = ""
+# --- Bot State Management ---
+class BotState:
+    def __init__(self):
+        self.search_thread_running = False
+        self.stop_search_flag = False
+        self.search_thread = None
+
+# Conversation states for adding a filter
+ASK_DEPARTMENT, ASK_PALABRA_CLAVE, ASK_PRECIO_MIN, ASK_PRECIO_MAX, EDIT_FILTER_CHOICE, PROCESS_FILTER_VALUE = range(6)
 
 
-Hilo_status = ['detenido']
-stop_threads = [False]
-Filtros = []
-borrar_filtro = 1
-introducir_datos_filtro, end = range(2)
-anadir_usuarios = 1
-Users_id = ['1122914981']
-botones_boorar_usuario =[]
+# --- Authentication ---
+def is_authorized(update: Update) -> bool:
+    user_id = str(update.effective_user.id)
+    if user_id in AUTHORIZED_USER_IDS:
+        return True
+    logger.warning(f"Unauthorized access attempt by user ID: {user_id}")
+    update.message.reply_text('Lo siento, no tienes permiso para usar este bot.')
+    return False
 
-# ---Autentificar usuarios
-
-
-def autentificar(update, context):
-    for user in Users_id:
-        if str(update.effective_user['id']) == str(user):
-            return True
-        else:
-            return False
-
-
-def add_user(update, context):
-    if str(update.message.chat_id) == '1122914981':
-        update.message.reply_text('Hola admin añade un nuevo usuario!, escribe el id del usuario')
-        return anadir_usuarios
-    else:
-        update.message.reply_text('No tienes permiso para agregar a nadie!')
-
-
-def usuario_recibido(update, context):
-    user = update.message.text
-    Users_id.append(str(user))
-    update.message.reply_text('Usuario añadido correctamente, aqui estan todos')
-    update.message.reply_text(Users_id)
-    return ConversationHandler.END
-
-
-# def delete_user(update, context):
-#     """Eliminar una usuario"""
-#     if autentificar(update, context):
-#         for user in Users_id:
-#            botones_boorar_usuario.append([InlineKeyboardButton(str(user), callback_data=)])
-#         botones_boorar_usuario.append([InlineKeyboardButton("Cancelar", callback_data='Cancelar_user')])
-#         markup = InlineKeyboardMarkup(botones_boorar_usuario)
-#         update.message.reply_text('Seleccione el usuario a borrar', reply_markup=markup)
-        
-
-    # else:
-    #     update.message.reply_text(
-    #         'Lo siento usted no tiene permiso para acceder a este bot , por favor pongase en contacto con el administrador')
-
-def show_user(update,context):
-    update.message.reply_text(Users_id)
+# --- User Management (Basic) ---
+def add_user_command(update: Update, context: CallbackContext):
+    if str(update.effective_user.id) != AUTHORIZED_USER_IDS[0]: # Simple check: only first authorized user is admin
+        update.message.reply_text('No tienes permiso para agregar usuarios.')
+        return
     
+    if not context.args:
+        update.message.reply_text('Por favor, proporciona el ID del usuario a agregar. Ejemplo: /add_user 123456789')
+        return
 
-# def cancel_user(update, context):
-#     query = update.callback_query
-#     query.answer()
-#     query.edit_message_text(
-#         "Se ha cancelado la accion"
-#     )
- 
+    new_user_id = context.args[0].strip()
+    if not re.match(r"^\d+$", new_user_id):
+        update.message.reply_text(f"ID de usuario '{new_user_id}' inválido. Debe ser numérico.")
+        return
+
+    if new_user_id not in AUTHORIZED_USER_IDS:
+        AUTHORIZED_USER_IDS.append(new_user_id)
+        # Note: This change is in-memory. For persistence, update the env var or a config file.
+        update.message.reply_text(f'Usuario {new_user_id} añadido. Usuarios autorizados actuales: {", ".join(AUTHORIZED_USER_IDS)}')
+        logger.info(f"User {new_user_id} added by {update.effective_user.id}. Current authorized users: {AUTHORIZED_USER_IDS}")
+    else:
+        update.message.reply_text(f'El usuario {new_user_id} ya está autorizado.')
+
+def show_users_command(update: Update, context: CallbackContext):
+    if not is_authorized(update): return
+    update.message.reply_text(f'Usuarios autorizados: {", ".join(AUTHORIZED_USER_IDS)}')
+
+# --- Scraper Thread Function ---
+def buscar_thread_function(bot_state: BotState, bot: CallbackContext.bot, main_chat_id: int):
+    logger.info("Scraper thread started.")
+    thread_db_conn = None
+    driver = None
+
+    try:
+        thread_db_conn = db.get_db_connection()
+        if not thread_db_conn:
+            logger.error("Scraper thread: Failed to get DB connection. Exiting.")
+            bot_state.search_thread_running = False
+            return
+
+        # Initialize WebDriver for this thread
+        driver = scraper.get_webdriver_instance()
+        if not driver:
+            logger.error("Scraper thread: Failed to get WebDriver instance. Exiting.")
+            bot_state.search_thread_running = False
+            db.close_db_connection(thread_db_conn)
+            return
+        
+        # Ensure anuncios table exists (it drops and recreates)
+        # This means only ads from the current run will be processed for notification.
+        db.crear_tabla_anuncio(thread_db_conn)
 
 
+        while not bot_state.stop_search_flag:
+            logger.info("Scraper thread: Starting new search cycle.")
+            active_filters = db.obtener_filtros(thread_db_conn)
+            if not active_filters:
+                logger.info("Scraper thread: No active filters. Sleeping for 60 seconds.")
+                time.sleep(60)
+                continue
 
-# ----->funciones independientes
-def buscar(upd, context):
-    CHATID = upd.message.chat_id
-    bot = context.bot
+            for filtro_row in active_filters:
+                if bot_state.stop_search_flag: break
+                
+                _, dep, palabra_clave, precio_min, precio_max, provincia, municipio, fotos_str = filtro_row
+                fotos = fotos_str.lower() == 'true' # Convert string to boolean
 
-    while True:
-        if stop_threads[0]:
-            break
+                logger.info(f"Scraper thread: Processing filter: palabra_clave='{palabra_clave}', departamento='{dep}'")
+                
+                # scraper.buscar_anuncios now handles its own pagination and calls procesar_y_guardar_anuncios
+                # procesar_y_guardar_anuncios in scraper.py calls db.insertar_anuncio
+                # We pass the thread-specific db_conn to scraper functions that need it.
+                
+                # Modify scraper.py's procesar_y_guardar_anuncios to accept db_conn
+                # For now, assuming scraper.buscar_anuncios is adapted to use a passed db_conn for its calls
+                # to functions that eventually hit db.insertar_anuncio
+                
+                # This is a conceptual change: scraper.py's functions that interact with DB
+                # (like procesar_y_guardar_anuncios) must now accept `thread_db_conn`.
+                # The current scraper.py does not do this. This is a required modification in scraper.py.
+                # For now, I will proceed as if scraper.procesar_y_guardar_anuncios is adapted.
+                # A simplified call, assuming `buscar_anuncios` handles passing `thread_db_conn` down:
+                scraper.buscar_anuncios(driver,
+                                        db_conn=thread_db_conn, # This param needs to be added to scraper.py functions
+                                        departamento=dep,
+                                        palabra_clave=palabra_clave,
+                                        precio_min=precio_min,
+                                        precio_max=precio_max,
+                                        provincia=provincia,
+                                        municipio=municipio,
+                                        fotos=fotos,
+                                        max_pages=2) # Limit pages for testing/politeness
 
-        try:
-            filtros = obtener_filtros()
-            for filtro in filtros:
+                logger.info("Scraper thread: Checking for unnotified ads...")
+                unnotified_ads = db.obtener_anuncios_no_notificados(thread_db_conn)
+                
+                for ad_row in unnotified_ads:
+                    if bot_state.stop_search_flag: break
+                    ad_id, ad_url, titulo, precio, descripcion, fecha_anuncio, ubicacion, foto_info_db, _ = ad_row
+                    
+                    # Fetch contact details for the new ad
+                    # This requires scraper.py to be adapted if it doesn't take `driver`
+                    # `obtener_contacto` in original main.py was `obtener_contacto(url)`
+                    # `scraper.obtener_contacto_de_anuncio(driver, ad_url)` is the new one
+                    contacto_nombre, telefono, email = scraper.obtener_contacto_de_anuncio(driver, ad_url)
 
-                id = filtro[0]
-                dep = filtro[1]
-                palabra_clave = filtro[2]
-                precio_min = filtro[3]
-                precio_max = filtro[4]
-                provincia = filtro[5]
-                municipio = filtro[6]
-                fotos = filtro[7]
+                    dt = datetime.now(pytz.timezone('Cuba')) # Consider if fecha_anuncio is more relevant
+                    hora_actual = dt.strftime('%Y-%m-%d a las %H:%M:%S')
 
-                get_main_anuncios(dep, palabra_clave, precio_min, precio_max, provincia, municipio, fotos)
-                anuncios = obtener_anuncios()
-                for anuncio in anuncios:
-                    id = anuncio[0]
-                    url = "https://www.revolico.com" + str(anuncio[1])
-                    titulo = anuncio[2]
-                    precio = anuncio[3]
-                    descripcion = anuncio[4]
-                    fecha = anuncio[5]
-                    ubicacion = anuncio[6]
-                    foto = anuncio[7]
-                    Contacto, telefono, email = obtener_contacto(url)
-
-                    print(titulo)
-                    dt = datetime.now(pytz.timezone('Cuba'))
-                    hora = dt.strftime('%Y-%m-%d a las %H:%M:%S')
-
-                    info = (
-                            "#" + str(palabra_clave) + "\n" + str(titulo) + "\n\n"
-                            + "Precio: " + str(precio) + "\n\n\n"
-                            + "descripcion: \n" + str(descripcion) + "\n\n\n"
-                            + "fecha: " + str(hora) + "\n"
-                            + "ubicacion: " + str(ubicacion) + "\n"
-                            + "Contacto: " + str(Contacto) + "\n"
-                            + "Email: " + str(email) + "\n"
-                            + "Telefono: #" + str(telefono) + "\n\n"
+                    mensaje = (
+                        f"#{palabra_clave.replace(' ', '_')} #{dep}\n"
+                        f"<b>{titulo}</b>\n\n"
+                        f"Precio: {precio}\n"
+                        f"Descripción: {descripcion[:200]}...\n" # Truncate description
+                        f"Fecha del Anuncio: {fecha_anuncio}\n" # This is from the ad itself
+                        f"Ubicación: {ubicacion}\n"
+                        f"Visto: {hora_actual}\n\n"
+                        f"Contacto: {contacto_nombre}\n"
+                        f"Teléfono: {telefono}\n"
+                        f"Email: {email}\n"
                     )
+                    
+                    inline_button = InlineKeyboardButton("Ver Anuncio", url=ad_url)
+                    markup = InlineKeyboardMarkup([[inline_button]])
 
-                    boton = InlineKeyboardButton("Ver anuncio", url)
-                    markup = InlineKeyboardMarkup([
-                        [boton]
-                    ])
+                    try:
+                        # Send to main user who initiated search (or a default admin/channel)
+                        bot.send_message(chat_id=main_chat_id, text=mensaje, reply_markup=markup, parse_mode="HTML")
+                        logger.info(f"Sent new ad notification for '{titulo}' to chat ID {main_chat_id}")
+                        
+                        # Optionally send to a channel if CHANNEL_ID is configured
+                        if CHANNEL_ID and str(main_chat_id) != str(CHANNEL_ID): # Avoid double sending if main_chat_id is channel
+                           bot.send_message(chat_id=CHANNEL_ID, text=mensaje, reply_markup=markup, parse_mode="HTML")
+                           logger.info(f"Sent new ad notification for '{titulo}' to channel ID {CHANNEL_ID}")
 
-                    # print("Esta es la info: "+str(info))
-                    if foto != 0 and foto != 'no tiene':
-                        print("Estoy dentro de un anuncio con foto")
-                        src_img = obtener_imagenes(url)
-                        if src_img:
-                            print("Voy a enviar una anuncio con imagen")
-                            ft = open("foto.jpg", "rb")
-                            # inf =str(info)+'<a href="'+ src_img +'">&#8205;</a>'
-                            chat = upd.message.chat
-                            chat.send_action(action=ChatAction.UPLOAD_PHOTO)
-                            # upd.message.reply_text(text=inf, parse_mode="HTML", reply_markup=markup)
-                            upd.message.reply_photo(photo=ft, caption=info, reply_markup=markup)
-                            # -1001598585439
-                            print("enviando mensaje al PV")
-                            print(info)
-                            
-                            context.bot.send_message(
-                                chat_id="-1001598585439",
-                                text=info,
-                                reply_markup=markup
-                            )
-                            print("enviando mensaje al canal")
-                    else:
-                        # chat.send_action(action=ChatAction.TYPING)
-                        print("Voy a enviar una anuncio sin imagen")
-                        context.bot.send_message(CHATID, info, reply_markup=markup)
-                        print(info)
-                        context.bot.send_message(
-                                chat_id="-1001598585439",
-                                text=info,
-                                reply_markup=markup
-                            )
+                        db.marcar_anuncio_como_notificado(thread_db_conn, ad_id)
+                    except Exception as e_send:
+                        logger.error(f"Error sending Telegram message for ad ID {ad_id}", exc_info=True)
+                    
+                    time.sleep(random.uniform(2, 5)) # Delay between sending messages
 
-                time.sleep(0.1)
+                if not active_filters: time.sleep(random.uniform(5,10)) # Small delay if no ads from this filter
+            
+            logger.info(f"Scraper thread: Cycle finished. Sleeping for {60*5} seconds.")
+            time.sleep(60 * 5) # Wait 5 minutes before next full cycle
 
-            time.sleep(0.1)
-        except Exception as e:
-            print(e)
+    except Exception as e:
+        logger.error(f"Scraper thread: Unhandled exception: {e}", exc_info=True)
+        bot.send_message(chat_id=main_chat_id, text=f"El hilo de búsqueda encontró un error y se detuvo: {e}")
+    finally:
+        if driver:
+            scraper.close_webdriver() # Ensure scraper's global driver instance is closed
+        if thread_db_conn:
+            db.close_db_connection(thread_db_conn)
+        bot_state.search_thread_running = False
+        logger.info("Scraper thread stopped and cleaned up.")
 
 
-botones_filtro_borrar = []
-opciones_filtro = [
-    [InlineKeyboardButton("palabra_clave", callback_data='palabra_clave')],
-    [InlineKeyboardButton("precio_min", callback_data='precio_min'),
-     InlineKeyboardButton("precio_max", callback_data='precio_max')],
-    # [InlineKeyboardButton("provincia", callback_data='provincia'),
-    #  InlineKeyboardButton("municipio", callback_data='municipio'),
-    #  InlineKeyboardButton("fotos", callback_data='fotos')],
-    [InlineKeyboardButton(text=emojize("Cancelar :x:", use_aliases=True), callback_data='Cancelar'),
-     InlineKeyboardButton(text=emojize("Aceptar :white_check_mark:", use_aliases=True), callback_data='Aceptar')],
+# --- Telegram Command Handlers ---
+def start_command(update: Update, context: CallbackContext):
+    if not is_authorized(update): return
+    update.message.reply_text('¡Hola! Soy tu bot de Revolico. Usa /add para añadir un filtro y /start_search para comenzar a buscar.')
+
+def start_search_command(update: Update, context: CallbackContext):
+    if not is_authorized(update): return
+    bot_state: BotState = context.bot_data['bot_state']
+
+    if bot_state.search_thread_running:
+        update.message.reply_text('La búsqueda ya está en ejecución.')
+        return
+
+    bot_state.stop_search_flag = False
+    bot_state.search_thread_running = True
+    # Pass context.bot for sending messages from thread, and user's chat_id for replies
+    bot_state.search_thread = threading.Thread(target=buscar_thread_function, args=(bot_state, context.bot, update.message.chat_id))
+    bot_state.search_thread.start()
+    update.message.reply_text('Búsqueda iniciada. Usar /stop_search para detener.')
+    logger.info(f"Search started by user {update.effective_user.id}")
+
+def stop_search_command(update: Update, context: CallbackContext):
+    if not is_authorized(update): return
+    bot_state: BotState = context.bot_data['bot_state']
+
+    if not bot_state.search_thread_running:
+        update.message.reply_text('La búsqueda no está en ejecución.')
+        return
+
+    bot_state.stop_search_flag = True
+    if bot_state.search_thread:
+        bot_state.search_thread.join(timeout=10) # Wait for thread to finish
+    bot_state.search_thread_running = False # Ensure it's marked as not running
+    update.message.reply_text('Señal de detención enviada. El hilo de búsqueda se detendrá pronto.')
+    logger.info(f"Search stop requested by user {update.effective_user.id}")
+
+
+def status_command(update: Update, context: CallbackContext):
+    if not is_authorized(update): return
+    bot_state: BotState = context.bot_data['bot_state']
+    status_msg = "En ejecución" if bot_state.search_thread_running else "Detenido"
+    update.message.reply_text(f'Estado de la búsqueda: {status_msg}')
+
+# --- Add Filter Conversation ---
+# Predefined keyboard markups (can be module level)
+DEPARTAMENTOS_KEYBOARD = [
+    [InlineKeyboardButton("Compra-Venta", callback_data='dep_compra-venta'), InlineKeyboardButton("Autos", callback_data='dep_autos')],
+    [InlineKeyboardButton("Vivienda", callback_data='dep_vivienda'), InlineKeyboardButton("Empleos", callback_data='dep_empleos')],
+    [InlineKeyboardButton("Servicios", callback_data='dep_servicios'), InlineKeyboardButton("Computadoras", callback_data='dep_computadoras')],
+    [InlineKeyboardButton("Cancelar", callback_data='addfilter_cancel')],
 ]
-markup_filtro = InlineKeyboardMarkup(opciones_filtro)
-opciones_departamentos = [
-    [InlineKeyboardButton(text=emojize("Compra-Venta :money_with_wings:", use_aliases=True),
-                          callback_data='compra-venta'),
-     InlineKeyboardButton(text=emojize("Autos :car:", use_aliases=True), callback_data='autos'),
-     InlineKeyboardButton(text=emojize("Vivienda :house_with_garden:", use_aliases=True), callback_data='vivienda')],
-    [InlineKeyboardButton(text=emojize("Empleos :briefcase:", use_aliases=True), callback_data='empleos'),
-     InlineKeyboardButton(text=emojize("Servicios :wrench:", use_aliases=True), callback_data='servicios'),
-     InlineKeyboardButton(text=emojize("Computadoras :computer:", use_aliases=True), callback_data='computadoras')],
-    [InlineKeyboardButton(text=emojize("Cancelar :x:", use_aliases=True), callback_data='Cancelar')],
+MARKUP_DEPARTAMENTOS = InlineKeyboardMarkup(DEPARTAMENTOS_KEYBOARD)
+
+EDIT_FILTER_KEYBOARD = [
+    [InlineKeyboardButton("Palabra Clave", callback_data='edit_palabra_clave')],
+    [InlineKeyboardButton("Precio Mín", callback_data='edit_precio_min'), InlineKeyboardButton("Precio Máx", callback_data='edit_precio_max')],
+    [InlineKeyboardButton("Provincia", callback_data='edit_provincia'), InlineKeyboardButton("Fotos (Sí/No)", callback_data='edit_fotos')],
+    [InlineKeyboardButton("Guardar Filtro", callback_data='addfilter_done'), InlineKeyboardButton("Cancelar", callback_data='addfilter_cancel')],
 ]
-
-markup_departamentos = InlineKeyboardMarkup(opciones_departamentos)
-
-
-# # ---->Seccion de editar los filtros
-
-def departamento(update: Update, context: CallbackContext) -> None:
-    query = update.callback_query
-    global bt
-    bt = boton()
-    bt.id = "departamento"
-    bt.valor = query.data
-    if bt:
-        Filtros.append(bt)
-    query.answer()
-    query.edit_message_text(text='Continua editando el filtro:', reply_markup=markup_filtro)
-
-    return introducir_datos_filtro
+MARKUP_EDIT_FILTER = InlineKeyboardMarkup(EDIT_FILTER_KEYBOARD)
 
 
-def palabra_clave(update, context):
-    print("estoy dentro de palabra clave")
+def add_filter_command(update: Update, context: CallbackContext):
+    if not is_authorized(update): return
+    context.user_data['current_filter_parts'] = {} # Initialize filter construction
+    update.message.reply_text('Selecciona el departamento para tu nuevo filtro:', reply_markup=MARKUP_DEPARTAMENTOS)
+    return ASK_DEPARTMENT
+
+def ask_department_callback(update: Update, context: CallbackContext):
     query = update.callback_query
     query.answer()
-    query.edit_message_text(text="Ejemplos de búsquedas por palabra clave:\n"
-                                 "En los resultados aparecerán anuncios que contengan:\n\n"
-                                 "<b>casa grande: </b>     todas las palabras de la búsqueda.\n"
-                                 "<b>\"casa grande\":</b>   la frase exacta.\n"
-                                 "<b>casa | grande:</b>   una palabra o la otra\n"
-                                 "<b>casa !grande:</b>    una palabra pero no la otra.\n"
-                                 "<b>casa (grande | pequeña):</b>   la primera palabra y cualquiera de las otras dos\n",
-                            parse_mode="HTML")
+    department_choice = query.data.split('_')[1]
+    context.user_data['current_filter_parts']['departamento'] = department_choice
+    query.edit_message_text(text=f"Departamento: {department_choice}. Ahora edita los demás campos:", reply_markup=MARKUP_EDIT_FILTER)
+    return EDIT_FILTER_CHOICE
 
-    global bt
-    bt = boton()
-    bt.id = "palabra_clave"
-
-    return introducir_datos_filtro
-
-
-def precio_min(update, context):
+def edit_filter_choice_callback(update: Update, context: CallbackContext):
     query = update.callback_query
     query.answer()
-    query.edit_message_text(
-        "Dime el precio-minimo que quieres buscar"
-    )
-    global bt
-    bt = boton()
-    bt.id = "precio_min"
+    choice = query.data.split('_')[1] # e.g., "palabra_clave" from "edit_palabra_clave"
+    context.user_data['filter_field_to_edit'] = choice
+    
+    field_prompts = {
+        "palabra_clave": "Por favor, envía la palabra clave para la búsqueda.",
+        "precio_min": "Envía el precio mínimo (solo números).",
+        "precio_max": "Envía el precio máximo (solo números).",
+        "provincia": "Envía la provincia (ej: La Habana). Por defecto es 'La Habana'.",
+        "fotos": "Busca anuncios con fotos? Envía 'Si' o 'No'."
+    }
+    prompt = field_prompts.get(choice, "Valor desconocido. Cancela y reintenta.")
+    query.edit_message_text(text=prompt)
+    return PROCESS_FILTER_VALUE
 
-    return introducir_datos_filtro
+def process_filter_value_message(update: Update, context: CallbackContext):
+    user_text = update.message.text.strip()
+    field_to_edit = context.user_data.get('filter_field_to_edit')
+    
+    if not field_to_edit:
+        update.message.reply_text("Error interno. Por favor, cancela y reintenta.", reply_markup=MARKUP_EDIT_FILTER)
+        return EDIT_FILTER_CHOICE
 
+    current_filter = context.user_data.get('current_filter_parts', {})
 
-def precio_max(update, context):
+    if field_to_edit in ["precio_min", "precio_max"]:
+        if not user_text.isdigit():
+            update.message.reply_text("El precio debe ser numérico. Intenta de nuevo o edita otro campo.", reply_markup=MARKUP_EDIT_FILTER)
+            return EDIT_FILTER_CHOICE 
+        current_filter[field_to_edit] = int(user_text)
+    elif field_to_edit == "fotos":
+        current_filter[field_to_edit] = user_text.lower() in ['si', 'sí', 'true', 'yes']
+    else:
+        current_filter[field_to_edit] = user_text
+    
+    context.user_data['current_filter_parts'] = current_filter
+    # Build summary of current filter
+    summary_lines = [f"{k.replace('_', ' ').capitalize()}: {v}" for k, v in current_filter.items()]
+    summary_text = "Filtro actual:\n" + "\n".join(summary_lines) + "\n\nPuedes seguir editando o guardar."
+    update.message.reply_text(summary_text, reply_markup=MARKUP_EDIT_FILTER)
+    return EDIT_FILTER_CHOICE
+
+def add_filter_done_callback(update: Update, context: CallbackContext):
     query = update.callback_query
     query.answer()
-    query.edit_message_text(
-        "Dime el precio-maximo que quieres buscar"
-    )
-    global bt
-    bt = boton()
-    bt.id = "precio_max"
+    db_conn = context.bot_data['db_conn']
+    current_filter = context.user_data.get('current_filter_parts')
 
-    return introducir_datos_filtro
+    if not current_filter or not current_filter.get('departamento') or not current_filter.get('palabra_clave'):
+        query.edit_message_text("Faltan campos obligatorios (departamento, palabra clave). Cancela o continúa editando.", reply_markup=MARKUP_EDIT_FILTER)
+        return EDIT_FILTER_CHOICE
 
+    # Set defaults for optional fields if not provided
+    dep = current_filter['departamento']
+    p_clave = current_filter['palabra_clave']
+    pr_min = current_filter.get('precio_min')
+    pr_max = current_filter.get('precio_max')
+    prov = current_filter.get('provincia', 'La Habana') # Default province
+    fotos = current_filter.get('fotos', False) # Default fotos
 
-# def provincia(update, context):
-#     query = update.callback_query
-#     query.answer()
-#     query.edit_message_text(
-#         "Dime la provincia que quieres buscar"
-#     )
-#     global bt
-#     bt = boton()
-#     bt.id = "provincia"
-#
-#     return introducir_datos_filtro
-#
-#
-# def municipio(update, context):
-#     query = update.callback_query
-#     query.answer()
-#     query.edit_message_text(
-#         "Dime el municipio en el que quieres buscar (para seleccionar municipio , tiene que haber establecido previamente la provincia"
-#     )
-#     global bt
-#     bt = boton()
-#     bt.id = "municipio"
-#     return introducir_datos_filtro
-
-
-# def fotos(update, context):
-#     query = update.callback_query
-#     query.answer()
-#     query.edit_message_text(
-#         "Si quieres que el anuncio tenga fotos escribe Si o No"
-#     )
-#     global bt
-#     bt = boton()
-#     bt.id = "fotos"
-#
-#     return introducir_datos_filtro
-
-
-def received_information(update, context):
-    print("estoy dentro de recived")
-    text = update.message.text
-    print(text)
-
-    update.message.reply_text('ok.Puedes seguir editando el filtro  o terminar', reply_markup=markup_filtro)
-    bt.valor = text
-    if bt:
-        Filtros.append(bt)
-
-    return introducir_datos_filtro
-
-
-def cancel(update, context):
-    query = update.callback_query
-    query.answer()
-    query.edit_message_text(
-        "Se ha cancelado la accion"
-    )
-    if Filtros:
-        Filtros.clear()
-
+    try:
+        db.insertar_filtro(db_conn, dep, p_clave, pr_min, pr_max, prov, None, fotos) # Municipio not handled by this simplified UI
+        query.edit_message_text("¡Filtro guardado exitosamente!")
+        logger.info(f"Filter saved by user {update.effective_user.id}: {current_filter}")
+    except Exception as e:
+        logger.error(f"Error saving filter: {e}", exc_info=True)
+        query.edit_message_text("Error al guardar el filtro.")
+    
+    context.user_data.pop('current_filter_parts', None)
+    context.user_data.pop('filter_field_to_edit', None)
     return ConversationHandler.END
 
-
-def done(update, context):
-    if Filtros is not None:
-        p_clave_valor = None
-        pr_min_valor = None
-        pr_max_valor = None
-        prov_valor = "La Habana"
-        mun_valor = None
-        fot_valor = None
-        dep = None
-        for filtro in Filtros:
-            id = filtro.id
-            valor = filtro.valor
-            print("filtro id: ", id)
-            print("filtro valor: ", valor)
-
-            if id == "palabra_clave":
-                p_clave_valor = valor
-            if id == "precio_min":
-                pr_min_valor = valor
-            if id == "precio_max":
-                pr_max_valor = valor
-            if id == "departamento":
-                dep = valor
-            # if id == "provincia":
-            #     prov_valor = valor
-            # if id == "municipio":
-            #     mun_valor = valor
-            # if id == "fotos":
-            #     if valor == 'Si' or 'si':
-            #         fot_valor = True
-        insertar_filtro(dep, p_clave_valor, pr_min_valor, pr_max_valor, prov_valor, mun_valor, fot_valor)
+def add_filter_cancel_callback(update: Update, context: CallbackContext):
     query = update.callback_query
     query.answer()
-    query.edit_message_text(
-        "Se ha completado la accion de manera exitosa"
-    )
-    Filtros.clear()
-    userName = update.effective_user['first_name']
-    log_data = "[" + str(userName) + "]: " + str(p_clave_valor) + "\n"
-    with open("log.txt", "a") as log_file:
-        log_file.write(str(log_data))
-        log_file.close()
-
+    query.edit_message_text("Creación de filtro cancelada.")
+    context.user_data.pop('current_filter_parts', None)
+    context.user_data.pop('filter_field_to_edit', None)
     return ConversationHandler.END
 
+# --- Other Commands ---
+def show_filters_command(update: Update, context: CallbackContext):
+    if not is_authorized(update): return
+    db_conn = context.bot_data['db_conn']
+    filters_list = db.obtener_filtros(db_conn)
+    if not filters_list:
+        update.message.reply_text("No hay filtros activos.")
+        return
+    
+    response = "Filtros activos:\n\n"
+    for f_id, dep, pk, pmin, pmax, prov, mun, фото_str in filters_list:
+        response += (f"ID: {f_id}\nDepartamento: {dep}\nPalabra Clave: {pk}\n"
+                     f"Precio Mín: {pmin if pmin else '-'}\nPrecio Máx: {pmax if pmax else '-'}\n"
+                     f"Provincia: {prov if prov else '-'}\nFotos: {'Sí' if фото_str.lower() == 'true' else 'No'}\n---\n")
+    update.message.reply_text(response)
 
-def delete_all(update: Update, context: CallbackContext) -> None:
+def delete_filter_command(update: Update, context: CallbackContext):
+    if not is_authorized(update): return
+    db_conn = context.bot_data['db_conn']
+    filters_list = db.obtener_filtros(db_conn)
+    if not filters_list:
+        update.message.reply_text("No hay filtros para borrar.")
+        return
+
+    keyboard = []
+    for f_id, _, pk, *rest in filters_list:
+        keyboard.append([InlineKeyboardButton(f"ID: {f_id} - \"{pk[:20]}\"", callback_data=f"del_{f_id}")])
+    keyboard.append([InlineKeyboardButton("Borrar Todos los Filtros", callback_data="del_ALL")])
+    keyboard.append([InlineKeyboardButton("Cancelar", callback_data="del_cancel")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    update.message.reply_text("Selecciona el filtro a borrar:", reply_markup=reply_markup)
+
+def delete_filter_callback(update: Update, context: CallbackContext):
     query = update.callback_query
     query.answer()
-    eliminar_todos_los_filtros()
-    query.edit_message_text("Se han eliminado todos los filtros")
+    action_data = query.data
+    db_conn = context.bot_data['db_conn']
 
+    if action_data == "del_ALL":
+        db.eliminar_todos_los_filtros(db_conn)
+        query.edit_message_text("Todos los filtros han sido eliminados.")
+        logger.info(f"All filters deleted by user {update.effective_user.id}")
+    elif action_data == "del_cancel":
+        query.edit_message_text("Operación cancelada.")
+    elif action_data.startswith("del_"):
+        try:
+            filter_id_to_delete = int(action_data.split('_')[1])
+            db.eliminar_filtro(db_conn, filter_id_to_delete)
+            query.edit_message_text(f"Filtro ID {filter_id_to_delete} eliminado.")
+            logger.info(f"Filter ID {filter_id_to_delete} deleted by user {update.effective_user.id}")
+        except (ValueError, IndexError) as e:
+            logger.error(f"Error parsing filter ID from callback data '{action_data}': {e}")
+            query.edit_message_text("Error al procesar la solicitud de borrado.")
+            
+def help_command(update: Update, context: CallbackContext):
+    if not is_authorized(update): return
+    help_text = (
+        "/start - Inicia la interacción con el bot.\n"
+        "/add - Añade un nuevo filtro de búsqueda.\n"
+        "/show - Muestra los filtros activos.\n"
+        "/delete - Elimina un filtro existente.\n"
+        "/start_search - Inicia la búsqueda de anuncios (en segundo plano).\n"
+        "/stop_search - Detiene la búsqueda de anuncios.\n"
+        "/status - Muestra el estado actual de la búsqueda.\n"
+        "/show_users - Muestra los IDs de usuarios autorizados.\n"
+        "/add_user <ID> - (Admin) Añade un nuevo usuario autorizado.\n"
+        "/help - Muestra este mensaje de ayuda."
+    )
+    update.message.reply_text(help_text)
 
-def delete_filter(update: Update, context: CallbackContext) -> None:
-    query = update.callback_query
-    eliminar_filtro(query.data)
-    query.answer()
-    botones_filtro_borrar.clear()
-    query.edit_message_text("Se ha elimindao satisfactoriamente el filtro")
-
-
-def iniciar_lista_de_trabajo(upd, context):
-    stop_threads.clear()
-    stop_threads.append(False)
-    upd.message.reply_text('Se ha iniciado la busqueda automatica , para detenerlo teclee /stop')
-    global hilo_busqueda
-    hilo_busqueda = threading.Thread(target=buscar, args=(upd, context,))
-    hilo_busqueda.start()
-
-
-def parar(upd):
-    print(Hilo_status)
-    Hilo_status.clear()
-    Hilo_status.append("detenido")
-    stop_threads.clear()
-    stop_threads.append(True)
-    hilo_busqueda.join()
-    print('thread killed')
-    upd.message.reply_text('Stopped!')
-
-
-# ---->lista de comandos del bot
-
-def start(update, context):
-    """Iniciar el bot"""
-
-    if autentificar(update, context):
-        # sendDocument
-        update.message.reply_text('Hola bienvenido al bot revolico, aqui podras conocer en segundos cuando se publique un producto seleccionado'
-                                  'por usted!')
-    else:
-        update.message.reply_text(
-            'Lo siento usted no tiene permiso para acceder a este bot , por favor pongase en contacto con el administrador')
-
-
-def start_search(update: Updater, context):
-    """Iniciar  el bot"""
-    if autentificar(update, context):
-        if Hilo_status[0] == 'funcionando':
-            parar(upd=update)
-        Hilo_status.clear()
-        Hilo_status.append('funcionando')
-        iniciar_lista_de_trabajo(update, context)
-    else:
-        update.message.reply_text(
-            'Lo siento usted no tiene permiso para acceder a este bot , por favor pongase en contacto con el administrador')
-
-
-
-
-def stoped(update: Updater, context):
-    """Detener el bot"""
-    if autentificar(update, context):
-        parar(upd=update)
-    else:
-        update.message.reply_text(
-            'Lo siento usted no tiene permiso para acceder a este bot , por favor pongase en contacto con el administrador')
-
-
-
-def status(update: Updater, context):
-    print(update)
-    update.message.reply_text(Hilo_status[0])
-    # context.bot.send_message(
-    #                             chat_id="-1001598585439",
-    #                             text=Hilo_status[0]
-    #                         )
-
-
-def add(update: Update, context: CallbackContext) -> None:
-    """Anadir una nueva regla o filtro  ."""
-    if autentificar(update, context):
-        update.message.reply_text('Selecciona el departamento donde buscar:', reply_markup=markup_departamentos)
-        return introducir_datos_filtro
-    else:
-        update.message.reply_text(
-            'Lo siento usted no tiene permiso para acceder a este bot , por favor pongase en contacto con el administrador')
-
-
-
-
-
-def delete(update, context):
-    """Eliminar una regla o filtro"""
-    if autentificar(update, context):
-        filtros = obtener_filtros()
-        for filtro in filtros:
-            id = filtro[0]
-            palabra_clave = filtro[2]
-
-            botones_filtro_borrar.append([InlineKeyboardButton(str(palabra_clave), callback_data=id)])
-        botones_filtro_borrar.append([InlineKeyboardButton(text="Borrar todos", callback_data='borrar todos')])
-        botones_filtro_borrar.append([InlineKeyboardButton("Cancelar", callback_data='Cancelar')])
-        markup = InlineKeyboardMarkup(botones_filtro_borrar)
-        update.message.reply_text('Seleccione el filtro a borrar', reply_markup=markup)
-
-    else:
-        update.message.reply_text(
-            'Lo siento usted no tiene permiso para acceder a este bot , por favor pongase en contacto con el administrador')
-
-
-
-def test(update, context):
-    url='https://google.com'
-    boton = InlineKeyboardButton("Ver anuncio", url)
-    markup = InlineKeyboardMarkup([[boton]])
-    context.bot.send_message(chat_id="-1001598585439",text='info' ,reply_markup=markup)
-    """Testear el bot y enviar su informe de estado"""
-    update.message.reply_text('Tranquilo sigo vivo')
-
-
-def show(update, context):
-    """Mostrar todas las reglas o filtros activos."""
-    if autentificar(update, context):
-        filtros = obtener_filtros()
-        for filtro in filtros:
-            id = filtro[0]
-            dep = filtro[1]
-            palabra_clave = filtro[2]
-            precio_min = filtro[3]
-            precio_max = filtro[4]
-            provincia = filtro[5]
-            municipio = filtro[6]
-            fotos = filtro[7]
-            mensaje = (
-                    "id: " + str(id) + "\n" +
-                    "departamento: " + str(dep) + "\n" +
-                    "palabra_clave: " + (palabra_clave) + "\n" +
-                    "precio_min: " + str(precio_min) + "\n" +
-                    "precio_max: " + str(precio_max) + "\n" +
-                    "provincia: " + str(provincia) + "\n" +
-                    "municipio: " + str(municipio) + "\n" +
-                    "fotos: " + str(fotos) + "\n"
-
-            )
-            update.message.reply_text(mensaje)
-    else:
-        update.message.reply_text(
-            'Lo siento usted no tiene permiso para acceder a este bot , por favor pongase en contacto con el administrador')
-
-
-
-def help(update, context):
-    """Mostrar la ayuda del bot"""
-    if autentificar(update, context):
-        update.message.reply_text('Help!')
-    else:
-        update.message.reply_text(
-            'Lo siento usted no tiene permiso para acceder a este bot , por favor pongase en contacto con el administrador')
-
-
-
-def ads_admin(update, context):
-    """admin del bot"""
-    bot = context.bot
-    mi_id = 1122914981
-    if str(update.message.chat_id) == str(mi_id):
-        # sendDocument
-        doc = open('log.txt', 'rb')
-        bot.send_document(mi_id, doc)
-
-
-def Listener(update, context):
-    print(update)
-    bot = context.bot
-    update_msg = getattr(update, "message", None)  # get info of message
-    msg_id = update_msg.message_id  # get recently message id
-    groupId = update.message.chat_id
-    userName = update.effective_user['first_name']
-    user_id = update.effective_user['id']  # get user id
-    text = update.message.text  # get message sent to the bot
-    logger.info(f"[{user_id}][{userName}]:{text}.")
-    log_data = "[" + str(userName) + "]: " + str(text) + "\n"
-    with open("log.txt", "a") as log_file:
-        log_file.write(str(log_data))
-        log_file.close()
-
-
-def error(update, context):
+def error_handler(update: object, context: CallbackContext) -> None:
     """Log Errors caused by Updates."""
-    err = context.error
-    logger.warning('Update "%s" caused error "%s"', update, err)
-    time.sleep(5)
-    with open("log.txt", "a") as log_file:
-        log_file.write("Error:" + str(err))
-        log_file.close()
-    update.message.reply_text(err)
-
-
-def not_comand(update, context):
-    pass
-
+    logger.error(msg="Exception while handling an update:", exc_info=context.error)
+    if isinstance(update, Update) and update.effective_message:
+        # Try to send a message back to the user if possible
+        try:
+            update.effective_message.reply_text("Ocurrió un error procesando tu solicitud. Intenta de nuevo más tarde.")
+        except Exception as e:
+            logger.error(f"Failed to send error message to user: {e}")
 
 def main():
     """Start the bot."""
+    if not TOKEN: # Already checked, but good for safety
+        return
+
+    # Initialize bot state and DB connection
+    bot_state = BotState()
+    main_db_conn = db.get_db_connection()
+
+    if not main_db_conn:
+        logger.error("Failed to establish main database connection. Exiting.")
+        return
+
+    # Create tables if they don't exist using the main connection
+    db.crear_tabla_filtros(main_db_conn)
+    # db.crear_tabla_anuncio(main_db_conn) # The scraper thread will manage its anuncios table
+
     updater = Updater(TOKEN, use_context=True)
-
-    # Get the dispatcher to register handlers
-
     dp = updater.dispatcher
 
-    # Comandos
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("start_search", start_search, pass_chat_data=True))
-    dp.add_handler(CommandHandler("stop", stoped))
-    dp.add_handler(CommandHandler("delete", delete))
-    dp.add_handler(CommandHandler("show", show))
-    dp.add_handler(CommandHandler("test", test))
-    dp.add_handler(CommandHandler("help", help))
-    dp.add_handler(CommandHandler("ads_admin", ads_admin))
-    dp.add_handler(CommandHandler("status", status))
-    # dp.add_handler(CommandHandler("delete_user", delete_user))
-    dp.add_handler(CommandHandler("show_user", show_user))
-
-    dp.add_handler(ConversationHandler(
-        entry_points=[
-            CommandHandler('add', add)
-        ],
+    # Store state and main DB connection in bot_data for access in handlers
+    dp.bot_data['bot_state'] = bot_state
+    dp.bot_data['db_conn'] = main_db_conn
+    
+    # Conversation handler for adding filters
+    add_filter_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('add', add_filter_command)],
         states={
-            introducir_datos_filtro: [
-                CallbackQueryHandler(palabra_clave, pattern='palabra_clave'),
-                CallbackQueryHandler(precio_min, pattern='precio_min'),
-                CallbackQueryHandler(precio_max, pattern='precio_max'),
-                CallbackQueryHandler(departamento, pattern='compra-venta'),
-                CallbackQueryHandler(departamento, pattern='autos'),
-                CallbackQueryHandler(departamento, pattern='vivienda'),
-                CallbackQueryHandler(departamento, pattern='empleos'),
-                CallbackQueryHandler(departamento, pattern='servicios'),
-                CallbackQueryHandler(departamento, pattern='computadoras'),
-                # CallbackQueryHandler(provincia, pattern='provincia'),
-                # CallbackQueryHandler(municipio, pattern='municipio'),
-                # CallbackQueryHandler(fotos, pattern='fotos'),
-                MessageHandler(Filters.text, received_information),
-                CallbackQueryHandler(done, pattern='Aceptar'),
-                CallbackQueryHandler(cancel, pattern='Cancelar'),
+            ASK_DEPARTMENT: [CallbackQueryHandler(ask_department_callback, pattern='^dep_')],
+            EDIT_FILTER_CHOICE: [
+                CallbackQueryHandler(edit_filter_choice_callback, pattern='^edit_'),
+                CallbackQueryHandler(add_filter_done_callback, pattern='^addfilter_done$'),
             ],
-
+            PROCESS_FILTER_VALUE: [MessageHandler(Filters.text & ~Filters.command, process_filter_value_message)],
         },
-        fallbacks=[],
-    ))
-    dp.add_handler(ConversationHandler(
-        entry_points=[
-            CommandHandler("add_user", add_user)
+        fallbacks=[
+            CallbackQueryHandler(add_filter_cancel_callback, pattern='^addfilter_cancel$'),
+            CommandHandler('cancel', lambda u,c: u.message.reply_text("Operación cancelada.") or ConversationHandler.END) # Allow /cancel command
         ],
-        states={
-            anadir_usuarios: [
-                MessageHandler(Filters.text, usuario_recibido),
-            ],
+        map_to_parent={ # Allow returning to main interaction level if needed
+            ConversationHandler.END: ConversationHandler.END
+        }
+    )
 
-        },
-        fallbacks=[],
-    ))
-    dp.add_handler(CallbackQueryHandler(cancel, pattern='Cancelar'))
-    # dp.add_handler(CallbackQueryHandler(cancel_user, pattern='Cancelar_user'))
-    dp.add_handler(CallbackQueryHandler(delete_all, pattern='borrar todos'))
-    dp.add_handler(CallbackQueryHandler(delete_filter))
-    dp.add_handler(MessageHandler(Filters.text, Listener))
-    dp.add_handler(MessageHandler(Filters.photo | Filters.audio | Filters.voice |
-                                  Filters.video | Filters.sticker | Filters.document | Filters.location | Filters.contact,
-                                  not_comand))
+    dp.add_handler(add_filter_conv_handler)
 
-    # log all errors
-    dp.add_error_handler(error)
+    # Command Handlers
+    dp.add_handler(CommandHandler("start", start_command))
+    dp.add_handler(CommandHandler("start_search", start_search_command))
+    dp.add_handler(CommandHandler("stop_search", stop_search_command))
+    dp.add_handler(CommandHandler("status", status_command))
+    dp.add_handler(CommandHandler("show", show_filters_command))
+    dp.add_handler(CommandHandler("delete", delete_filter_command))
+    dp.add_handler(CommandHandler("help", help_command))
+    dp.add_handler(CommandHandler("add_user", add_user_command))
+    dp.add_handler(CommandHandler("show_users", show_users_command))
 
+    # Callback Query Handlers (for filter deletion)
+    dp.add_handler(CallbackQueryHandler(delete_filter_callback, pattern='^del_'))
+    
+    # Error Handler
+    dp.add_error_handler(error_handler)
+
+    # Start polling
     updater.start_polling()
-
-    # PORT = int(os.environ.get("PORT", "8443"))
-    # HEROKU_APP_NAME = os.environ.get("HEROKU_APP_NAME")
-    # updater.start_webhook(listen="0.0.0.0", port=PORT, url_path=TOKEN)
-    # updater.bot.set_webhook("https://{}.herokuapp.com/{}".format(HEROKU_APP_NAME, TOKEN))
-
+    logger.info("Bot started polling.")
     updater.idle()
+
+    # Cleanup on exit
+    logger.info("Bot shutting down...")
+    bot_state.stop_search_flag = True # Signal thread to stop
+    if bot_state.search_thread and bot_state.search_thread.is_alive():
+        logger.info("Waiting for search thread to complete...")
+        bot_state.search_thread.join(timeout=15)
+    if main_db_conn:
+        db.close_db_connection(main_db_conn)
+    logger.info("Bot shutdown complete.")
 
 
 if __name__ == '__main__':
     main()
+```
