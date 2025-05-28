@@ -414,4 +414,3 @@ if __name__ == '__main__':
             db.close_db_connection(test_db_conn)
         logger.info("--- Scraper.py standalone test run finished ---")
 
-```

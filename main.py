@@ -1,11 +1,12 @@
 import logging
+import random
 from emoji import emojize
 import requests # Keep for now, though not directly used in this version after scraper changes
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update, ChatAction, ParseMode
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackQueryHandler, \
     CallbackContext
-import db # db.py is expected to be in the same directory
-import scraper # scraper.py is expected to be in the same directory
+import db
+import scraper
 import os
 import time
 import threading
@@ -533,4 +534,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-```
