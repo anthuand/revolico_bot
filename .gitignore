@@ -1,3 +1,6 @@
 prueba.py
 soup.html
 venv
+.env
+anuncios.db
+log.txt
